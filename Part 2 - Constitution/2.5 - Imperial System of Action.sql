@@ -223,7 +223,7 @@ AS
 BEGIN
   DECLARE @userId int = USER_ID() ,
           @points int;
-  EXEC [Action].[RecoverFor] @userId , @points = @points;
+  EXEC [Action].[RecoverFor] @userId , @points = @points OUTPUT;
 
   PRINT 'You have recovered ' + CAST( @points AS NVARCHAR(30) ) + ' AP.';
 END" ) ,

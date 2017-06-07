@@ -49,10 +49,6 @@ of time during which votes may be cast.
   [IsPublic] bit NOT NULL ,
   [OpenedOn] datetime NOT NULL ,
   [ClosedOn] datetime NOT NULL ,
-  [OpenEventRaised] bit NOT NULL
-                        DEFAULT( 0 ) ,
-  [CloseEventRaised] bit NOT NULL
-                         DEFAULT( 0 ) ,
   UNIQUE ( [Id], [BallotId] ) ,
   FOREIGN KEY ( [BallotId] ) REFERENCES [Senate].[Ballots]( [Id] ));
 CREATE NONCLUSTERED INDEX [IX_Elections_OpenedOn]
@@ -112,9 +108,7 @@ SELECT
     [BallotId] ,
     [IsPublic] ,
     [OpenedOn] ,
-    [ClosedOn] ,
-    [OpenEventRaised] ,
-    [CloseEventRaised]
+    [ClosedOn]
   FROM [Senate].[Elections]
   WHERE [OpenedOn] <= GETUTCDATE() AND
         [ClosedOn] > GETUTCDATE();" ) ,
@@ -130,9 +124,7 @@ SELECT
     [BallotId] ,
     [IsPublic] ,
     [OpenedOn] ,
-    [ClosedOn] ,
-    [OpenEventRaised] ,
-    [CloseEventRaised]
+    [ClosedOn]
   FROM [Senate].[Elections]
   WHERE [ClosedOn] <= GETUTCDATE();" ) ,
     ( "Ancillary Action Log Regarding Votes Cast in the Senate (I)" ,

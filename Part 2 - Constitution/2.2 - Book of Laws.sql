@@ -454,7 +454,7 @@ INSERT [Imperium].[Laws]
   VALUES
     ( "Foundation of the Imperium" ,
 "The god-king, Archon, does hereby proclaim, the founding of a great nation,
- * called The Imperium." ,
+called The Imperium." ,
       GETUTCDATE() , USER_ID() );
 INSERT [Imperium].[Clauses]
     ( [LawId] , [ClauseNumber] , [Name] , [English] , [Statement] )
