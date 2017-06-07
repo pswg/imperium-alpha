@@ -128,11 +128,12 @@ BEGIN
   PRINT "GO";
   PRINT "/*******************************************************************************";
   PRINT "* VERSU X: Copia Sacri";
-  PRINT "* The Great Sa declared that all would be welcome within the Sacrum and to";
-  PRINT "* voice of the Echo, but only high priests, or Sacerdos, would be trusted with";
-  PRINT "* the rituals of the Sacrum.";
+  PRINT "* The Great Sa declared that all would be welcome within the Sacrum and to read";
+  PRINT "* from the Codex Sagatus and listen to the voice of the Echo, but only high";
+  PRINT "* priests, or Sacerdos, would be trusted with the rituals of the Sacrum.";
   PRINT "*******************************************************************************/";
   PRINT "GO";
+  PRINT "GRANT EXECUTE ON OBJECT::[Sacrum].[CodexSagatus] TO PUBLIC;";
   PRINT "GRANT SELECT , REFERENCES ON OBJECT::[Sacrum].[Echo] TO PUBLIC;";
   PRINT "CREATE ROLE [Sacerdos];";
   PRINT "GRANT EXECUTE , VIEW DEFINITION ON OBJECT::[Sacrum].[Loquere] TO [Sacerdos];";

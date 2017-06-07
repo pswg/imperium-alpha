@@ -23,7 +23,8 @@ Imperium:
 
   * pswg
   * djscheuf
- 
+  * H.g.Kh
+
   [1]: OBJECT::[Gates].[PermitEntry]
   [2]: OBJECT::[Gates].[GeneratePassword]
   [3]: ROLE::[Citizen]" , 
@@ -33,7 +34,9 @@ Imperium:
 INSERT @users ( [Name] )
   VALUES
     ( 'pswg' ) ,
-    ( 'djscheuf' )
+    ( 'djscheuf' ) ,
+    ( 'H.g.Kh' );
+
 DECLARE @name sysname ,
         @pwd sysname;
 DECLARE [NameCursor] CURSOR LOCAL FAST_FORWARD

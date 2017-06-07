@@ -202,11 +202,11 @@ BEGIN
         [Change] += @points ,
         [Date] = GETUTCDATE() ,
         @logId = [Id]
-      WHERE [Process] = @@ProcId;
+      WHERE [Process] = @procId;
   IF @@ROWCOUNT = 0
     BEGIN
       INSERT [Action].[ActionLog]( [UserId] , [Change] , [Process] , [Date] )
-        VALUES( @userId , @points , @@ProcId , GETUTCDATE() );
+        VALUES( @userId , @points , @procId , GETUTCDATE() );
       SET @logId = SCOPE_IDENTITY();
     END
 
@@ -283,17 +283,17 @@ procedure:
 AS
 BEGIN
   SET NOCOUNT ON;
-  DECLARE @err nvarchar(400);
+  DECLARE @err nvarchar( 400 );
 
   IF @points < 0
     THROW 50000 , N'Parameter @points must be non-negative.' , 1;
-  ELSE IF NOT EXISTS( SELECT *
-                        FROM [sys].[procedures]
-                        WHERE [object_id] = @procId )
+  IF NOT EXISTS( SELECT *
+                   FROM [sys].[procedures]
+                   WHERE [object_id] = @procId )
     BEGIN
       SET @err =
         'No procedure with ID '
-        + CAST( @procId AS nvarchar(30) )
+        + CAST( @procId AS nvarchar( 30 ) )
         + ' exists.';
       THROW 50000 , @err , 1;
     END
@@ -310,10 +310,10 @@ BEGIN
 
   IF USER_NAME(@userId) IS NULL
     THROW 50000 , N'Specified user does not exist.' , 1;
-  ELSE IF IS_ROLEMEMBER( 'ActionExempt', USER_NAME(@userId) ) = 1
+  ELSE IF IS_ROLEMEMBER( 'ActionExempt', USER_NAME( @userId ) ) = 1
     RETURN 0;
 
-  EXEC [Action].[Recover] @userId;
+  EXEC [Action].[RecoverFor] @userId;
 
   SELECT
       @value = [Value] ,
@@ -403,4 +403,3 @@ the world of Alpha, the Imperitor of the Imperium, Archon, does hereby
 proclaim," ,
     @clauses;
 GO
-

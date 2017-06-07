@@ -206,20 +206,22 @@ BEGIN
           @lawId bigint ,
           @clauseNumber int;
   SET @schName = ISNULL( @schName , '' );
-  SELECT TOP 1
-      @lawId = [LawId] ,
-      @clauseNumber = [ClauseNumber]
-    FROM [Imperium].[EnactmentStack]
-    ORDER BY [Order];
-  IF( @lawId IS NOT NULL AND
-      NOT EXISTS( SELECT [Id]
-                    FROM [Imperium].[History]
-                    WHERE [EventType] = @eventType AND
-                          [ObjectType] = @objType AND
-                          [ObjectName] = @objName AND
-                          [SchemaName] = @schName AND
-                          [LawId] = @lawId AND
-                          [ClauseNumber] = @clauseNumber ))
+  IF ( HAS_PERMS_BY_NAME(
+         '[Imperium].[EnactmentStack]' ,
+         'OBJECT' ,
+         'SELECT' ) = 1 )
+    SELECT TOP 1 @lawId = [LawId] , @clauseNumber = [ClauseNumber]
+      FROM [Imperium].[EnactmentStack]
+      ORDER BY [Order];
+  IF ( @lawId IS NOT NULL AND
+       NOT EXISTS( SELECT [Id]
+                     FROM [Imperium].[History]
+                     WHERE [EventType] = @eventType
+                       AND [ObjectType] = @objType
+                       AND [ObjectName] = @objName
+                       AND [SchemaName] = @schName
+                       AND [LawId] = @lawId
+                       AND [ClauseNumber] = @clauseNumber ))
     INSERT [Imperium].[History](
         [EventType] ,
         [ObjectType] ,
@@ -653,20 +655,22 @@ BEGIN
           @lawId bigint ,
           @clauseNumber int;
   SET @schName = ISNULL( @schName , '' );
-  SELECT TOP 1
-      @lawId = [LawId] ,
-      @clauseNumber = [ClauseNumber]
-    FROM [Imperium].[EnactmentStack]
-    ORDER BY [Order];
-  IF( @lawId IS NOT NULL AND
-      NOT EXISTS( SELECT [Id]
-                    FROM [Imperium].[History]
-                    WHERE [EventType] = @eventType AND
-                          [ObjectType] = @objType AND
-                          [ObjectName] = @objName AND
-                          [SchemaName] = @schName AND
-                          [LawId] = @lawId AND
-                          [ClauseNumber] = @clauseNumber ))
+  IF ( HAS_PERMS_BY_NAME(
+         '[Imperium].[EnactmentStack]' ,
+         'OBJECT' ,
+         'SELECT' ) = 1 )
+    SELECT TOP 1 @lawId = [LawId] , @clauseNumber = [ClauseNumber]
+      FROM [Imperium].[EnactmentStack]
+      ORDER BY [Order];
+  IF ( @lawId IS NOT NULL AND
+       NOT EXISTS( SELECT [Id]
+                     FROM [Imperium].[History]
+                     WHERE [EventType] = @eventType
+                       AND [ObjectType] = @objType
+                       AND [ObjectName] = @objName
+                       AND [SchemaName] = @schName
+                       AND [LawId] = @lawId
+                       AND [ClauseNumber] = @clauseNumber ))
     INSERT [Imperium].[History](
         [EventType] ,
         [ObjectType] ,

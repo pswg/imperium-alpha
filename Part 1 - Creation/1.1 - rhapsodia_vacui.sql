@@ -133,12 +133,13 @@ END
 GO
 
 /*******************************************************************************
- * VERSU X: Copia Sacri
- * The Great Sa declared that all would be welcome within the Sacrum and to
- * voice of the Echo, but only high priests, or Sacerdos, would be trusted with
- * the rituals of the Sacrum.
+ * VERSU IX: Copia Sacri
+ * The Great Sa declared that all would be welcome within the Sacrum and to read
+ * from the Codex Sagatus and listen to the voice of the Echo, but only high
+ * priests, or Sacerdos, would be trusted with the rituals of the Sacrum.
 *******************************************************************************/
 GO
+GRANT EXECUTE ON OBJECT::[Sacrum].[CodexSagatus] TO PUBLIC;
 GRANT SELECT , REFERENCES ON OBJECT::[Sacrum].[Echo] TO PUBLIC;
 CREATE ROLE [Sacerdos];
 GRANT EXECUTE , VIEW DEFINITION ON OBJECT::[Sacrum].[Loquere] TO [Sacerdos];

@@ -363,7 +363,7 @@ DECLARE @sql nvarchar(200) =
   + '  RETURN ' + @ballotId + ';' + @n
   + 'END';
 EXEC ( @sql );" ) ,
-    ( "Calling for Votes" ,
+    ( "Definition of a Call for Votes" ,
 "A [call for votes][1] is a formal action to open an election for a bill. A
 call for votes shall include the [bill][2] for which the call for votes was
 made, the [election][3] that was opened in response to the call, the minimum
@@ -504,7 +504,7 @@ BEGIN
       THROW 50000 , @err , 1;
     END
 
-  EXEC @result = [Action].[Require] @@ProcID , @logId = @logId;
+  EXEC @result = [Action].[Require] @@ProcID , @logId = @logId OUTPUT;
 
   IF @result = 0
     BEGIN
