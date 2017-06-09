@@ -39,6 +39,7 @@ vetoed.
   [ReceivedOn] datetime NULL ,
   [ReceivedBy] int NULL ,
   [Vetoed] bit NULL ,
+  [ErrorClause] int NULL ,
   [Statement] nvarchar(4000) NULL ,
   FOREIGN KEY ( [BillId] )
     REFERENCES [Senate].[Bills]( [Id] ) ,
@@ -110,6 +111,7 @@ BEGIN
           @message nvarchar( 4000 ) ,
           @msgTypName sysname ,
           @lawId bigint ,
+          @errClause int ,
           @err nvarchar(4000) ,
           @result int = -1;
   WHILE 1 = 1
@@ -119,7 +121,7 @@ BEGIN
               @handle = [conversation_handle] ,
               @message = [message_body] ,
               @msgTypName = [message_type_name]
-            FROM [Senate].[PresentmentQueue] ) ,
+            FROM [Imperium].[PresentmentQueue] ) ,
         TIMEOUT 5000;
 
       IF @@ROWCOUNT = 0
@@ -145,6 +147,7 @@ BEGIN
             EXEC @result = [Imperium].[Ratify]
               @billId ,
               @lawId = @lawId OUTPUT ,
+              @errorClause = @errClause OUTPUT ,
               @errorMessage = @err OUTPUT;
           END TRY
           BEGIN CATCH
@@ -155,6 +158,7 @@ BEGIN
             SET
               [LawId] = @lawId ,
               [Vetoed] = IIF( @lawId IS NULL , 1 , 0 ) ,
+              [ErrorClause] = @errClause ,
               [Statement] = @err
             WHERE [BillId] = @billId;
         END
@@ -189,8 +193,7 @@ Imperitor shall respond by holding a [presentment ceremony][2]
       call for votes for said election, raise an error and stop
   6.  if the person presenting the bill is not the same person that proposed
       the bill, raise an error and stop
-  7.  evaluate the simple action point requirement associated with this
-      process
+  7.  evaluate the action point requirement associated with this process
   8.  record the presentment in the ledger of the senate
   9.  send a presentment message to the presentment service of the office of
       the Imperium
@@ -251,7 +254,7 @@ BEGIN
   IF @proposedBy <> @presentedBy
     THROW 50000 , 'A bill may only be presented by its proposer.' , 1;
 
-  EXEC @result = [Action].[Require] @@ProcID , @logId = @logId;
+  EXEC @result = [Action].[Require] @@ProcID , @logId = @logId OUTPUT;
   IF @result = 0
     BEGIN
       INSERT [Senate].[Presentments]
@@ -272,7 +275,7 @@ BEGIN
       BEGIN DIALOG @handle
         FROM SERVICE [//Imperium/Service/Presentment]
         TO SERVICE '//Imperium/Service/Presentment'
-        ON CONTRACT [//Imperium/Contracts/Presentment]
+        ON CONTRACT [//Imperium/Contract/Presentment]
         WITH ENCRYPTION = OFF;
       SEND ON CONVERSATION @handle
         MESSAGE TYPE [//Imperium/Messages/Presentment] ( @xml );
@@ -284,13 +287,13 @@ BEGIN
   SET NOCOUNT OFF;
   RETURN @result;
 END" ) ,
-    ( "Simple Action Point Requirement for the Presentment of Bills" ,
-"The [simple action point requirement][1] for [presenting][2] a bill to the
+    ( "Action Point Requirement for the Presentment of Bills" ,
+"The [action point requirement][1] for [presenting][2] a bill to the
 Imperitor shall be five (20) action points.
 
-  [1]: OBJECT::[Action].[SimpleActionPointRequirements]
+  [1]: OBJECT::[Action].[ActionPointRequirements]
   [2]: OBJECT::[Senate].[Present]" ,
-"INSERT [Action].[SimpleActionPointRequirements] ( [ProcId] , [Points] )
+"INSERT [Action].[ActionPointRequirements] ( [ProcId] , [Points] )
   VALUES ( OBJECT_ID( '[Senate].[Present]' ) , 20 );" ) ,
     ( "Access to the Presentment Process" ,
 "All [senators][1] shall have the right to [present][2] bills proposed in the

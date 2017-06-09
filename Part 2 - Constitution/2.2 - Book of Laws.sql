@@ -29,7 +29,7 @@ CREATE TABLE [Imperium].[Laws](
               IDENTITY( 1 , 1 )
               PRIMARY KEY ,
   [Name] sysname NOT NULL ,
-  [Preamble] nvarchar(4000) NOT NULL ,
+  [Preamble] nvarchar( 4000 ) NOT NULL ,
   [EnactedOn] datetime NOT NULL ,
   [EnactedBy] int NOT NULL );
 GO
@@ -50,10 +50,10 @@ CREATE TABLE [Imperium].[Clauses](
   [LawId] bigint NOT NULL ,
   [ClauseNumber] int NOT NULL ,
   [Name] sysname NULL ,
-  [English] nvarchar(4000) NOT NULL ,
-  [Statement] nvarchar(4000) NOT NULL ,
+  [English] nvarchar( 4000 ) NOT NULL ,
+  [Statement] nvarchar( 4000 ) NOT NULL ,
   PRIMARY KEY ( [LawId] , [ClauseNumber] ) ,
-  FOREIGN KEY ( [LawId] ) REFERENCES [Imperium].[Laws] ( [Id] ));
+  FOREIGN KEY ( [LawId] ) REFERENCES [Imperium].[Laws] ( [Id] ) );
 GO
 
 /*******************************************************************************
@@ -70,8 +70,8 @@ CREATE TYPE [Imperium].[ClauseTable] AS TABLE(
                      IDENTITY( 1 , 1 )
                      PRIMARY KEY ,
   [Name] sysname NULL ,
-  [English] nvarchar(4000) NOT NULL ,
-  [Statement] nvarchar(4000) NOT NULL );
+  [English] nvarchar( 4000 ) NOT NULL ,
+  [Statement] nvarchar( 4000 ) NOT NULL );
 GO
 
 /*******************************************************************************
@@ -100,7 +100,7 @@ CREATE TABLE [Imperium].[History](
   [LawId] bigint NOT NULL ,
   [ClauseNumber] int NOT NULL ,
   FOREIGN KEY ( [LawId] , [ClauseNumber] )
-  REFERENCES [Imperium].[Clauses] ( [LawId] , [ClauseNumber] ));
+  REFERENCES [Imperium].[Clauses] ( [LawId] , [ClauseNumber] ) );
 GO
 
 /*******************************************************************************
@@ -122,7 +122,7 @@ CREATE TABLE [Imperium].[EnactmentStack](
   [LawId] bigint NOT NULL ,
   [ClauseNumber] int NOT NULL ,
   FOREIGN KEY ( [LawId] , [ClauseNumber] )
-  REFERENCES [Imperium].[Clauses] ( [LawId] , [ClauseNumber] ));
+  REFERENCES [Imperium].[Clauses] ( [LawId] , [ClauseNumber] ) );
 GO
 
 /*******************************************************************************
@@ -168,7 +168,7 @@ CREATE PROCEDURE [Imperium].[PopEnactment]
 AS
 BEGIN
   DELETE [Imperium].[EnactmentStack]
-  WHERE [Order] = ( SELECT MAX([Order]) FROM [Imperium].[EnactmentStack] );
+  WHERE [Order] = ( SELECT MAX( [Order] ) FROM [Imperium].[EnactmentStack] );
 END
 GO
 
@@ -221,7 +221,7 @@ BEGIN
                        AND [ObjectName] = @objName
                        AND [SchemaName] = @schName
                        AND [LawId] = @lawId
-                       AND [ClauseNumber] = @clauseNumber ))
+                       AND [ClauseNumber] = @clauseNumber ) )
     INSERT [Imperium].[History](
         [EventType] ,
         [ObjectType] ,
@@ -272,10 +272,11 @@ GO
 GO
 CREATE PROCEDURE [Imperium].[Enact]
   @name sysname ,
-  @preamble nvarchar(4000) ,
+  @preamble nvarchar( 4000 ) ,
   @clauses [Imperium].[ClauseTable] READONLY ,
   @lawId bigint = NULL OUTPUT ,
-  @errorMessage nvarchar(4000) = NULL OUTPUT
+  @errorClause int = NULL OUTPUT ,
+  @errorMessage nvarchar( 4000 ) = NULL OUTPUT
   WITH EXECUTE AS CALLER
 AS
 BEGIN
@@ -283,7 +284,7 @@ BEGIN
   SET XACT_ABORT ON;
   DECLARE @id int ,
           @xc int = @@TRANCOUNT ,
-          @sp nvarchar(100) = 'Enactment_' + CAST( NEWID() AS nvarchar(36) );
+          @sp nvarchar( 100 ) = 'Enactment_' + CAST( NEWID() AS nvarchar( 36 ) );
   IF @xc = 0
     BEGIN TRANSACTION [Enact] WITH MARK 'Enact';
   ELSE
@@ -295,8 +296,8 @@ BEGIN
   SELECT @id = [Id] FROM @results;
 
   DECLARE @cTitle sysname ,
-          @english nvarchar(4000) ,
-          @statement nvarchar(4000) ,
+          @english nvarchar( 4000 ) ,
+          @statement nvarchar( 4000 ) ,
           @clauseNum int = 0;
   DECLARE [ClauseCursor] CURSOR LOCAL FAST_FORWARD
     FOR SELECT [Name] , [English] , [Statement]
@@ -317,14 +318,14 @@ BEGIN
           VALUES( @id , @clauseNum , @cTitle , @english , @statement );
         IF @cTitle IS NULL
           SET @cTitle =
-            CAST( @id AS nvarchar(30) ) + '.' +
-            CAST( @clauseNum AS nvarchar(30) );
+            CAST( @id AS nvarchar( 30 ) ) + '.' +
+            CAST( @clauseNum AS nvarchar( 30 ) );
         EXEC [Imperium].[PushEnactment] @id , @clauseNum;
         EXEC ( @statement );
         EXEC [Imperium].[PopEnactment];
       END TRY
       BEGIN CATCH
-        DECLARE @msg nvarchar(1000);
+        DECLARE @msg nvarchar( 1000 );
         EXEC [sys].[xp_sprintf]
           @msg OUTPUT ,
           'Error enacting law ''%s'', clause ''%s'' (%s.%s).' ,
@@ -334,6 +335,7 @@ BEGIN
           ROLLBACK TRANSACTION;
         ELSE
           ROLLBACK TRANSACTION @sp;
+        SET @errorClause = @clauseNum;
         SET @errorMessage = ERROR_MESSAGE();
         THROW;
       END CATCH
@@ -369,21 +371,24 @@ CREATE PROCEDURE [Imperium].[Recite]
   WITH EXECUTE AS CALLER
 AS
 BEGIN
-  DECLARE @lawId nvarchar(30) ,
-          @lawName sysname ,
-          @enactedOn nvarchar(30) ,
+  DECLARE @lawId int ,
+          @name sysname ,
+          @english nvarchar( 4000 ) ,
+          @statement nvarchar( 4000 ) ,
+          @enactedOn nvarchar( 30 ) ,
           @enactedBy sysname ,
-          @clauseName sysname ,
-          @hr nvarchar(78) = REPLACE( SPACE(78) , ' ' , '*' ) ,
-          @english nvarchar(4000) ,
-          @statement nvarchar(4000);
-  IF @law IS NULL
-    RETURN;
+          @eol nchar( 2 ) = char( 13 ) + char( 10 ) ,
+          @pf nchar( 3 ) = ' * ' ,
+          @hr nvarchar( 78 ) = REPLACE( SPACE( 78 ) , ' ' , '*' ) ,
+          @result int = -1;
   SELECT TOP (1)
-      @lawId = CAST( [Id] AS nvarchar(30)) ,
-      @lawName = [Name] ,
-      @enactedOn = CONVERT( nvarchar(30) , [EnactedOn] , 20 ) ,
-      @enactedBy = USER_NAME ( [EnactedBy] )
+      @lawId = [Id] ,
+      @name = LTRIM( RTRIM( [Name] ) ) ,
+      @english =
+        @pf + LTRIM( RTRIM( REPLACE( [Preamble] , @eol , @eol + @pf ) ) ) ,
+      @enactedOn = CONVERT( nvarchar( 30 ) , [EnactedOn] , 20 ) ,
+      @enactedBy = USER_NAME ( [EnactedBy] ) ,
+      @result = 0
     FROM [Imperium].[Laws]
     WHERE
       [Id] = CASE
@@ -400,38 +405,34 @@ BEGIN
         END
     ORDER BY [Id] ASC;
 
-  PRINT '-- # IMPERIAL LAW ' + @lawId;
-  PRINT '-- ' + @lawName;
-  PRINT '-- enacted on ' + @enactedOn;
-  PRINT '--         by ' + @enactedBy;
+  PRINT CONCAT( '-- IMPERIAL LAW #' , @lawId );
+  PRINT CONCAT( '-- enacted on: ' , @enactedOn );
+  PRINT CONCAT( '--         by: ' , @enactedBy );
+  PRINT '/*' + @hr;
+  PRINT CONCAT( @pf , @lawId , ': ' , @name );
+  PRINT @english;
+  PRINT @hr + '*/';
   PRINT '';
 
   DECLARE [ClauseCursor] CURSOR
     FOR SELECT
             ISNULL( NULLIF( [Name] , '' ) , '(unnamed clause)' ) ,
-            CAST( [ClauseNumber] AS nvarchar(30)),
-            LTRIM( RTRIM( [English] )),
-            LTRIM( RTRIM( [Statement] ))
+            CAST( [ClauseNumber] AS nvarchar( 30 ) ) ,
+            @pf + LTRIM( RTRIM( REPLACE( [English] , @eol , @eol + @pf ) ) ) ,
+            LTRIM( RTRIM( [Statement] ) )
           FROM [Imperium].[Clauses]
           WHERE [LawId] = @lawId AND
                 [ClauseNumber] = ISNULL( @clauseNum , [ClauseNumber] )
           ORDER BY [ClauseNumber];
   OPEN [ClauseCursor];
   FETCH NEXT FROM [ClauseCursor]
-    INTO @clauseName , @clauseNum , @english , @statement;
+    INTO @name , @clauseNum , @english , @statement;
   WHILE( @@FETCH_STATUS = 0 )
     BEGIN
-      DECLARE @cnum nvarchar( 30 ) = CAST( @clauseNum AS nvarchar(30) );
+      DECLARE @cnum nvarchar( 30 ) = CAST( @clauseNum AS nvarchar( 30 ) );
       PRINT '/*' + @hr;
-      PRINT ' * ' + @lawId + '.' + @cnum + ': ' + @clauseName;
-      DECLARE @n int = CHARINDEX( CHAR(13) + CHAR(10) , @english );
-      WHILE( @n > 0 )
-        BEGIN
-          PRINT ' * ' + SUBSTRING( @english , 0, @n + 2 );
-          SET @english = SUBSTRING( @english , @n + 2, LEN( @english ));
-          SET @n = CHARINDEX( CHAR(13) + CHAR(10) , @english );
-        END
-      PRINT ' * ' + @english;
+      PRINT CONCAT( @pf , @lawId , '.' , @clauseNum , ': ' , @name );
+      PRINT @english;
       PRINT @hr + '*/';
 
       PRINT 'GO';
@@ -440,10 +441,11 @@ BEGIN
       PRINT '';
 
       FETCH NEXT FROM [ClauseCursor]
-        INTO @clauseName , @clauseNum , @english , @statement;
+        INTO @name , @clauseNum , @english , @statement;
     END
   CLOSE [ClauseCursor];
   DEALLOCATE [ClauseCursor];
+  RETURN @result;
 END
 GO
 
@@ -506,7 +508,7 @@ more [clauses][2].
               IDENTITY( 1 , 1 )
               PRIMARY KEY ,
   [Name] sysname NOT NULL ,
-  [Preamble] nvarchar(4000) NOT NULL ,
+  [Preamble] nvarchar( 4000 ) NOT NULL ,
   [EnactedOn] datetime NOT NULL ,
   [EnactedBy] int NOT NULL );" ) ,
     ( 2 , 2 ,
@@ -523,10 +525,10 @@ be unique within the Book of Laws.
   [LawId] bigint NOT NULL ,
   [ClauseNumber] int NOT NULL ,
   [Name] sysname NULL ,
-  [English] nvarchar(4000) NOT NULL ,
-  [Statement] nvarchar(4000) NOT NULL ,
+  [English] nvarchar( 4000 ) NOT NULL ,
+  [Statement] nvarchar( 4000 ) NOT NULL ,
   PRIMARY KEY ( [LawId] , [ClauseNumber] ) ,
-  FOREIGN KEY ( [LawId] ) REFERENCES [Imperium].[Laws] ( [Id] ));" ) ,
+  FOREIGN KEY ( [LawId] ) REFERENCES [Imperium].[Laws] ( [Id] ) );" ) ,
     ( 2 , 3 ,
       "Definition of Clauses" ,
 "A [clause table][1] is a collection of items which shall consist of a clause
@@ -539,8 +541,8 @@ English, and a statement writen in SQL.
                      IDENTITY( 1 , 1 )
                      PRIMARY KEY ,
   [Name] sysname NULL ,
-  [English] nvarchar(4000) NOT NULL ,
-  [Statement] nvarchar(4000) NOT NULL );" ) ,
+  [English] nvarchar( 4000 ) NOT NULL ,
+  [Statement] nvarchar( 4000 ) NOT NULL );" ) ,
     ( 2 , 4 ,
       "Book of History" ,
 "Each line in the [Book of History][1] shall include a unique numeric
@@ -565,7 +567,7 @@ of History must have a corresponding clause recorded in the Book of Laws.
   [LawId] bigint NOT NULL ,
   [ClauseNumber] int NOT NULL ,
   FOREIGN KEY ( [LawId] , [ClauseNumber] )
-  REFERENCES [Imperium].[Clauses] ( [LawId] , [ClauseNumber] ));" ) ,
+  REFERENCES [Imperium].[Clauses] ( [LawId] , [ClauseNumber] ) );" ) ,
     ( 2 , 5 ,
       "The Enactment Stack" ,
 "There shall be a [enactment stack][1] which indicates the law and clause
@@ -583,7 +585,7 @@ clause recorded in the Book of Laws.
   [LawId] bigint NOT NULL ,
   [ClauseNumber] int NOT NULL ,
   FOREIGN KEY ( [LawId] , [ClauseNumber] )
-  REFERENCES [Imperium].[Clauses] ( [LawId] , [ClauseNumber] ));" ) ,
+  REFERENCES [Imperium].[Clauses] ( [LawId] , [ClauseNumber] ) );" ) ,
     ( 2 , 6 ,
       "Pushing to the Enactment Stack" ,
 "To [push an item to the enactment stack][1] is to add a new item to the
@@ -621,7 +623,7 @@ END" ) ,
 AS
 BEGIN
   DELETE [Imperium].[EnactmentStack]
-  WHERE [Order] = ( SELECT MAX([Order]) FROM [Imperium].[EnactmentStack] );
+  WHERE [Order] = ( SELECT MAX( [Order] ) FROM [Imperium].[EnactmentStack] );
 END" ) ,
     ( 2 , 8 ,
       "Recording History" ,
@@ -670,7 +672,7 @@ BEGIN
                        AND [ObjectName] = @objName
                        AND [SchemaName] = @schName
                        AND [LawId] = @lawId
-                       AND [ClauseNumber] = @clauseNumber ))
+                       AND [ClauseNumber] = @clauseNumber ) )
     INSERT [Imperium].[History](
         [EventType] ,
         [ObjectType] ,
@@ -717,10 +719,11 @@ extent that undoing those changes is possible within the enactment procedure.
   [4]: OBJECT::[Imperium].[Clauses]" ,
 "CREATE PROCEDURE [Imperium].[Enact]
   @name sysname ,
-  @preamble nvarchar(4000) ,
+  @preamble nvarchar( 4000 ) ,
   @clauses [Imperium].[ClauseTable] READONLY ,
   @lawId bigint = NULL OUTPUT ,
-  @errorMessage nvarchar(4000) = NULL OUTPUT
+  @errorClause int = NULL OUTPUT ,
+  @errorMessage nvarchar( 4000 ) = NULL OUTPUT
   WITH EXECUTE AS CALLER
 AS
 BEGIN
@@ -728,7 +731,7 @@ BEGIN
   SET XACT_ABORT ON;
   DECLARE @id int ,
           @xc int = @@TRANCOUNT ,
-          @sp nvarchar(100) = 'Enactment_' + CAST( NEWID() AS nvarchar(36) );
+          @sp nvarchar( 100 ) = 'Enactment_' + CAST( NEWID() AS nvarchar( 36 ) );
   IF @xc = 0
     BEGIN TRANSACTION [Enact] WITH MARK 'Enact';
   ELSE
@@ -740,8 +743,8 @@ BEGIN
   SELECT @id = [Id] FROM @results;
 
   DECLARE @cTitle sysname ,
-          @english nvarchar(4000) ,
-          @statement nvarchar(4000) ,
+          @english nvarchar( 4000 ) ,
+          @statement nvarchar( 4000 ) ,
           @clauseNum int = 0;
   DECLARE [ClauseCursor] CURSOR LOCAL FAST_FORWARD
     FOR SELECT [Name] , [English] , [Statement]
@@ -762,14 +765,14 @@ BEGIN
           VALUES( @id , @clauseNum , @cTitle , @english , @statement );
         IF @cTitle IS NULL
           SET @cTitle =
-            CAST( @id AS nvarchar(30) ) + '.' +
-            CAST( @clauseNum AS nvarchar(30) );
+            CAST( @id AS nvarchar( 30 ) ) + '.' +
+            CAST( @clauseNum AS nvarchar( 30 ) );
         EXEC [Imperium].[PushEnactment] @id , @clauseNum;
         EXEC ( @statement );
         EXEC [Imperium].[PopEnactment];
       END TRY
       BEGIN CATCH
-        DECLARE @msg nvarchar(1000);
+        DECLARE @msg nvarchar( 1000 );
         EXEC [sys].[xp_sprintf]
           @msg OUTPUT ,
           'Error enacting law ''%s'', clause ''%s'' (%s.%s).' ,
@@ -779,6 +782,7 @@ BEGIN
           ROLLBACK TRANSACTION;
         ELSE
           ROLLBACK TRANSACTION @sp;
+        SET @errorClause = @clauseNum;
         SET @errorMessage = ERROR_MESSAGE();
         THROW;
       END CATCH
@@ -810,21 +814,24 @@ statement of each of its [clauses][3] or a specified clause.
   WITH EXECUTE AS CALLER
 AS
 BEGIN
-  DECLARE @lawId nvarchar(30) ,
-          @lawName sysname ,
-          @enactedOn nvarchar(30) ,
+  DECLARE @lawId int ,
+          @name sysname ,
+          @english nvarchar( 4000 ) ,
+          @statement nvarchar( 4000 ) ,
+          @enactedOn nvarchar( 30 ) ,
           @enactedBy sysname ,
-          @clauseName sysname ,
-          @hr nvarchar(77) = REPLACE( SPACE(77) , ' ' , '*' ) ,
-          @english nvarchar(4000) ,
-          @statement nvarchar(4000);
-  IF @law IS NULL
-    RETURN;
+          @eol nchar( 2 ) = char( 13 ) + char( 10 ) ,
+          @pf nchar( 3 ) = ' * ' ,
+          @hr nvarchar( 78 ) = REPLACE( SPACE( 78 ) , ' ' , '*' ) ,
+          @result int = -1;
   SELECT TOP (1)
-      @lawId = CAST( [Id] AS nvarchar(30)) ,
-      @lawName = [Name] ,
-      @enactedOn = CONVERT( nvarchar(30) , [EnactedOn] , 20 ) ,
-      @enactedBy = USER_NAME ( [EnactedBy] )
+      @lawId = [Id] ,
+      @name = LTRIM( RTRIM( [Name] ) ) ,
+      @english =
+        @pf + LTRIM( RTRIM( REPLACE( [Preamble] , @eol , @eol + @pf ) ) ) ,
+      @enactedOn = CONVERT( nvarchar( 30 ) , [EnactedOn] , 20 ) ,
+      @enactedBy = USER_NAME ( [EnactedBy] ) ,
+      @result = 0
     FROM [Imperium].[Laws]
     WHERE
       [Id] = CASE
@@ -841,38 +848,34 @@ BEGIN
         END
     ORDER BY [Id] ASC;
 
-  PRINT '-- # IMPERIAL LAW ' + @lawId;
-  PRINT '-- ' + @lawName;
-  PRINT '-- enacted on ' + @enactedOn;
-  PRINT '--         by ' + @enactedBy;
+  PRINT CONCAT( '-- IMPERIAL LAW #' , @lawId );
+  PRINT CONCAT( '-- enacted on: ' , @enactedOn );
+  PRINT CONCAT( '--         by: ' , @enactedBy );
+  PRINT '/*' + @hr;
+  PRINT CONCAT( @pf , @lawId , ': ' , @name );
+  PRINT @english;
+  PRINT @hr + '*/';
   PRINT '';
 
   DECLARE [ClauseCursor] CURSOR
     FOR SELECT
             ISNULL( NULLIF( [Name] , '' ) , '(unnamed clause)' ) ,
-            CAST( [ClauseNumber] AS nvarchar(30)),
-            LTRIM( RTRIM( [English] )),
-            LTRIM( RTRIM( [Statement] ))
+            CAST( [ClauseNumber] AS nvarchar( 30 ) ) ,
+            @pf + LTRIM( RTRIM( REPLACE( [English] , @eol , @eol + @pf ) ) ) ,
+            LTRIM( RTRIM( [Statement] ) )
           FROM [Imperium].[Clauses]
           WHERE [LawId] = @lawId AND
                 [ClauseNumber] = ISNULL( @clauseNum , [ClauseNumber] )
           ORDER BY [ClauseNumber];
   OPEN [ClauseCursor];
   FETCH NEXT FROM [ClauseCursor]
-    INTO @clauseName , @clauseNum , @english , @statement;
+    INTO @name , @clauseNum , @english , @statement;
   WHILE( @@FETCH_STATUS = 0 )
     BEGIN
-      DECLARE @cnum nvarchar( 30 ) = CAST( @clauseNum AS nvarchar(30) );
+      DECLARE @cnum nvarchar( 30 ) = CAST( @clauseNum AS nvarchar( 30 ) );
       PRINT '/*' + @hr;
-      PRINT ' * ' + @lawId + '.' + @cnum + ': ' + @clauseName;
-      DECLARE @n int = CHARINDEX( CHAR(13) + CHAR(10) , @english );
-      WHILE( @n > 0 )
-        BEGIN
-          PRINT ' * ' + SUBSTRING( @english , 0, @n + 2 );
-          SET @english = SUBSTRING( @english , @n + 2, LEN( @english ));
-          SET @n = CHARINDEX( CHAR(13) + CHAR(10) , @english );
-        END
-      PRINT ' * ' + @english;
+      PRINT CONCAT( @pf , @lawId , '.' , @clauseNum , ': ' , @name );
+      PRINT @english;
       PRINT @hr + '*/';
 
       PRINT 'GO';
@@ -881,10 +884,11 @@ BEGIN
       PRINT '';
 
       FETCH NEXT FROM [ClauseCursor]
-        INTO @clauseName , @clauseNum , @english , @statement;
+        INTO @name , @clauseNum , @english , @statement;
     END
   CLOSE [ClauseCursor];
   DEALLOCATE [ClauseCursor];
+  RETURN @result;
 END" ) ,
     ( 2 , 11 ,
       "The First Page of the Book of History" ,

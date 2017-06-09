@@ -57,17 +57,39 @@ persons. Each line in the action log shall include:
   [Change] int NOT NULL ,
   [Process] int NOT NULL ,
   [Date] datetime NOT NULL );" ) ,
-    ( "Definition of tMaximum Action Points" ,
-"The [maximum number of action points][1] any indivudal may have shall be
-twenty (20).
+    ( "Definition of Maximum Action Points" ,
+"A ledger shall record the [maximum number of action points for a given 
+role][1].
 
-  [1]: OBJECT::[Action].[MaximumActionPoints]" ,
+  [1]: OBJECT::[Action].[MaximumActionPointsByRole]" ,
+"CREATE TABLE [Action].[MaximumActionPointsByRole](
+  [RoleId] int NOT NULL
+               PRIMARY KEY ,
+  [Value] int NOT NULL );" ) ,
+    ( "Definition of Maximum Action Points" ,
+"The [maximum number of action points][1] a given person may have shall be the
+greater of
+
+ *  the sum of the [maximum number of action points for][2] roles of which
+    said person is a member.
+ *  zero (0).
+
+  [1]: OBJECT::[Action].[MaximumActionPoints]
+  [1]: OBJECT::[Action].[MaximumActionPointsByRole]" ,
 "CREATE FUNCTION [Action].[MaximumActionPoints](
-  @userId sysname )
+  @userId int )
 RETURNS int
 AS
 BEGIN
-  RETURN 20;
+  DECLARE @value;
+  SELECT @value = SUM( [Value] )
+    FROM [Action].[MaximumActionPointsByRole]
+    WHERE [ProcId] = @procId
+      AND ( IS_ROLEMEMBER( USER_NAME( [RoleId] ) ,USER_NAME( @userId ) ) = 1
+              OR [RoleId] IS NULL );
+  IF @value IS NULL OR @value < 0
+    SET @value = 0;
+  RETURN @value;
 END" ) ,
     ( "Recovery Rate" ,
 "The number of seconds required for any person to recover a single action
@@ -76,7 +98,7 @@ sixty (60).
 
   [1]: OBJECT::[Action].[RecoveryRate]" ,
 "CREATE FUNCTION [Action].[RecoveryRate](
-  @userId sysname )
+  @userId int )
 RETURNS int
 AS
 BEGIN
@@ -98,38 +120,38 @@ requirements, which hereafter may be referred to as [action-exempt][1].
 "To [recover action points for a specified person][1] is to perform the
 following process:
 
-  1. if the person is [action-exempt][2], stop
-  2. if the person has not previously recovered [action points][3]
+ 1. if the person is [action-exempt][2], stop
+ 2. if the person has not previously recovered [action points][3]
     1. set the number of action points the person currently owns as zero (0)
     2. set the value of the person's recovery timer to current date and time
     3. stop
-  3. compute the number of recovered action points as the smaller of
+ 3. compute the number of recovered action points as the smaller of
     * the number of seconds betwen the current date and time and the value of
       the person's recovery timer divided by the person's [recovery rate][4],
       rounded down to the nearest whole number
     * the person's [maximum number of action points][5] the person may have
       minus the person's current number of action points
-  4. if the number of recovered action points is less than or equal to zero
-     (0), stop
-  5. increase the number of action points the person currently owns by the
-     number of recovered action points
-  6. increase the value of the person's recovery timer by a number of seconds
-     equal to the number of recovered action points multiplied by the
-     person's recovery rate
-  7. if the last line in the [action log][6] for the person is a reference to
-     the [action point recovery][7] process
+ 4. if the number of recovered action points is less than or equal to zero
+    (0), stop
+ 5. increase the number of action points the person currently owns by the
+    number of recovered action points
+ 6. increase the value of the person's recovery timer by a number of seconds
+    equal to the number of recovered action points multiplied by the
+    person's recovery rate
+ 7. if the last line in the [action log][6] for the person is a reference to
+    the [action point recovery][7] process
     1. increase the number of action points in the last line in action log
        for the person line by the number of recovered action points
     2. increase the date that the action log was recorded to the current date
        and time
-  8. if the last line in the action log for the person is not a reference to
-     the process of recovering action points
+ 8. if the last line in the action log for the person is not a reference to
+    the process of recovering action points
     1. write a new line in the action log noting the identity of the person,
        the number of recovered action points, and identity of the action
        point recovery process, and the current date and time.
     2. the numeric identifier of the newly written log line shall be
        returned to the caller
-  9. the number of recovered action points shall be returned to the caller
+ 9. the number of recovered action points shall be returned to the caller
 
   [1]: OBJECT::[Action].[RecoverFor]
   [2]: ROLE::[ActionExempt]
@@ -227,36 +249,35 @@ BEGIN
 
   PRINT 'You have recovered ' + CAST( @points AS NVARCHAR(30) ) + ' AP.';
 END" ) ,
-    ( "Definition of a Simple Action Point Requirements" ,
-"A [simple action point requirement][1], which hereafter may be referred to as
-a simple requirement, for a procedure is an a non-negative number of action
-points assocated with that procedure.
+    ( "Definition of a Action Point Requirements" ,
+"An [action point requirement][1], for a procedure is a number of action
+points assocated with that procedure, optionally associated with a role.
 
-  [1]: OBJECT::[Action].[SimpleActionPointRequirements]" ,
-"CREATE TABLE [Action].[SimpleActionPointRequirements](
+  [1]: OBJECT::[Action].[ActionPointRequirements]" ,
+"CREATE TABLE [Action].[ActionPointRequirements](
   [ProcId] int NOT NULL
            PRIMARY KEY ,
   [Points] int NOT NULL ,
-  CONSTRAINT [CK_Points]
-    CHECK ( [Points] >= 0 ));" ) ,
+  [RoleId] int NULL );" ) ,
     ( "Requiring Action Points" ,
 "To [require][1] a given non-negative number of [action points][2], from a
 given person, to perform a given procedure, is to perform the following
 procedure:
 
-  1. if the specified number of action points is negative, raise an error and
-     stop
-  2. if the specified procedure identifier does not identify a valid
-     procedure, raise an error and stop
-  3. if the person is [action-exempt][3], stop
-  4. if the number of action points is not specified, or if specified number
-     of action points is equal to the `NULL` value the value of the [simple
-     action point requirement][4] for the procedure shall be used in place of
-     the specified number of action points
-  5. recover action for the person
-  6. if the number of action points the person currently has is less than
-     specified number of action points, raise an error and stop
-  7. if the specified number of action points is greater than zero
+ 1. if said number of action points is negative, raise an error and stop
+ 2. if said procedure identifier does not identify a valid procedure, raise
+    an error and stop
+ 3. if the person for whom the requirement is being evaluated is
+    [action-exempt][3], stop
+ 4. if said number of action points is not specified, the number of action
+    points shall be the sum of the [action point requirements][4] that are:
+    *  for said procedure and not associated with a role
+    *  for said procedure and associated with a role of which said person is a
+       member
+ 5. recover action for the person
+ 6. if the number of action points the person currently has is less than
+    specified number of action points, raise an error and stop
+ 7. if the specified number of action points is greater than zero
     1. reduce the number of action points the person currently has by the
        specified number of action points
     2. if the number of action points the person has prior to the reduction
@@ -265,15 +286,15 @@ procedure:
        the reduction is less than the maximum number of action points the
        person may have, set the value of the person's reset timer to the
        current date and time
-  8. write a new line in the [action log][5] noting the identity of the
-     person, the number of recovered action points, and identity of the
-     procedure which the requirement was evaluated, and the current date and
-     time.
+ 8. write a new line in the [action log][5] noting the identity of the
+    person, the number of recovered action points, and identity of the
+    procedure which the requirement was evaluated, and the current date and
+    time.
 
   [1]: OBJECT::[Action].[Require]
   [2]: OBJECT::[Action].[ActionPoints]
   [3]: ROLE::[ActionExempt]
-  [4]: OBJECT::[Action].[SimpleActionPointRequirements]
+  [4]: OBJECT::[Action].[ActionPointRequirements]
   [5]: OBJECT::[Action].[ActionLog]" ,
 "CREATE PROCEDURE [Action].[Require]
     @procId int ,
@@ -299,9 +320,13 @@ BEGIN
     END
 
   IF @points IS NULL
-    SELECT @points = [Points]
-      FROM [Action].[SimpleActionPointRequirements]
-      WHERE [ProcId] = @procId;
+    SELECT @points = SUM( [Points] )
+      FROM [Action].[ActionPointRequirements]
+      WHERE [ProcId] = @procId
+        AND ( [RoleId] IS NULL
+              OR IS_ROLEMEMBER(
+                   USER_NAME( [RoleId] ) ,
+                   USER_NAME( @userId ) ) = 1 );
   SET @points = ISNULL( @points , 0 );
   SET @userId = ISNULL( @userId , USER_ID() );
   DECLARE @value int ,
@@ -367,7 +392,7 @@ SELECT
 "The history of a person's [action][1] shall be a [component][2] of that
 person's [personal profile][3].
 
-  [1]: ROLE::[Action].[ActionLog]
+  [1]: OBJECT::[Action].[ActionLog]
   [2]: OBJECT::[My].[ActionLog]
   [3]: SCHEMA::[My]" ,
 "CREATE VIEW [My].[ActionLog]
@@ -386,14 +411,25 @@ SELECT
   [1]: ROLE::[Citizen]
   [2]: OBJECT::[Action].[Recover]" ,
 "GRANT EXECUTE ON OBJECT::[Action].[Recover] TO [Citizen];" ) ,
-    ( "Access to Information Regarding Simple Action Requirements" ,
-"All [citizens][1] may [view the simple action point requirement][2] of any
-procedure.
+    ( "Maximum Action Points for Citizens" ,
+"[Citizens][1] shall have a maximum action point value of twenty (20).
 
   [1]: ROLE::[Citizen]
-  [2]: OBJECT::[Action].[SimpleActionPointRequirements]" ,
-"GRANT SELECT
-  ON OBJECT::[Action].[SimpleActionPointRequirements]
+  [2]: OBJECT::[Action].[MaximumActionPointsByRole]" ,
+"INSERT [Action].[MaximumActionPointsByRole]( [RoleId] , [Value] )
+  VALUES( USER_ID( 'Citizen' ) , 20 );" ) ,
+    ( "Access to Information Regarding Action Points" ,
+"All [citizens][1] may view the [maximum the action points for any role][2]
+and view the [action point requirement][3] of any procedure.
+
+  [1]: ROLE::[Citizen]
+  [2]: OBJECT::[Action].[MaximumActionPointsByRole]
+  [3]: OBJECT::[Action].[ActionPointRequirements]" ,
+"GRANT SELECT , REFERENCES
+  ON OBJECT::[Action].[MaximumActionPointsByRole]
+  TO [Citizen];
+GRANT SELECT , REFERENCES
+  ON OBJECT::[Action].[ActionPointRequirements]
   TO [Citizen];" );
 
 EXEC [Imperium].[Enact]

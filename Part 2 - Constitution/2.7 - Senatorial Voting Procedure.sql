@@ -48,13 +48,20 @@ of time during which votes may be cast.
   [BallotId] int NOT NULL ,
   [IsPublic] bit NOT NULL ,
   [OpenedOn] datetime NOT NULL ,
+  [OpenedBy] int NOT NULL ,
   [ClosedOn] datetime NOT NULL ,
+  [ClosedBy] int NOT NULL ,
   UNIQUE ( [Id], [BallotId] ) ,
   FOREIGN KEY ( [BallotId] ) REFERENCES [Senate].[Ballots]( [Id] ));
 CREATE NONCLUSTERED INDEX [IX_Elections_OpenedOn]
   ON [Senate].[Elections] ( [OpenedOn] );
 CREATE NONCLUSTERED INDEX [IX_Elections_ClosedOn]
-  ON [Senate].[Elections] ( [ClosedOn] );" ),
+  ON [Senate].[Elections] ( [ClosedOn] );" ) ,
+    ( "Definition of Voters" ,
+"A [voter][1] is person that casts votes in an election.
+
+  [1]: ROLE::[Voter]" ,
+"CREATE ROLE [Voter];") ,
     ( "Definition of Votes" ,
 "Each [vote][1] cast in an election shall note the election in which the
 vote was cast, name of the voter that cast the vote, and the choice selected
@@ -96,6 +103,24 @@ SELECT
   JOIN [Senate].[Elections] AS e
     ON e.[Id] = v.[ElectionId]
   WHERE e.[IsPublic] = 1;" ) ,
+    ( "Votes as Profile Component" ,
+"The history of a person's [votes][1] shall be a [component][2] of that
+person's [personal profile][3].
+
+  [1]: OBJECT::[Senate].[Votes]
+  [2]: OBJECT::[My].[Votes]
+  [3]: SCHEMA::[My]" ,
+"CREATE VIEW [My].[Votes]
+AS
+SELECT
+    [Id] ,
+    [ElectionId] ,
+    [BallotId] ,
+    [Value] ,
+    [CastOn] ,
+    [CastBy]
+  FROM [Action].[Votes]
+  WHERE [CastBy] = USER_ID();" ) ,
     ( "Definition of Open Elections" ,
 "An [open election][1] is an election that was opened prior to or on the
 current date and time and that will close after the current date and time.
@@ -108,7 +133,9 @@ SELECT
     [BallotId] ,
     [IsPublic] ,
     [OpenedOn] ,
-    [ClosedOn]
+    [OpenedBy] ,
+    [ClosedOn] ,
+    [ClosedBy]
   FROM [Senate].[Elections]
   WHERE [OpenedOn] <= GETUTCDATE() AND
         [ClosedOn] > GETUTCDATE();" ) ,
@@ -124,7 +151,9 @@ SELECT
     [BallotId] ,
     [IsPublic] ,
     [OpenedOn] ,
-    [ClosedOn]
+    [OpenedBy] ,
+    [ClosedOn] ,
+    [ClosedBy]
   FROM [Senate].[Elections]
   WHERE [ClosedOn] <= GETUTCDATE();" ) ,
     ( "Ancillary Action Log Regarding Votes Cast in the Senate (I)" ,
@@ -183,8 +212,7 @@ selected is to perform the following procedure:
      error and stop
   3. if the voter has already cast a vote in said election, raise an error
      and stop
-  4. evaluate the simple action point requirement associated with this
-     process
+  4. evaluate the action point requirement associated with this process
   5. record the vote
   6. record ancillary information in the activity log regarding this process
 
@@ -258,13 +286,13 @@ BEGIN
   SET NOCOUNT OFF;
   RETURN @result;
 END" ) ,
-    ( "Simple Action Point Requirement for the Casting of Votes" ,
-"The [simple action point requirement][1] for [casting][2] a vote in the
-senate shall be one (1) action point.
+    ( "Action Point Requirement for the Casting of Votes" ,
+"The [action point requirement][1] for [casting][2] a vote in the senate shall
+be one (1) action point.
 
-  [1]: OBJECT::[Action].[SimpleActionPointRequirements]
+  [1]: OBJECT::[Action].[ActionPointRequirements]
   [2]: OBJECT::[Senate].[Vote]" ,
-"INSERT [Action].[SimpleActionPointRequirements] ( [ProcId] , [Points] )
+"INSERT [Action].[ActionPointRequirements] ( [ProcId] , [Points] )
   VALUES ( OBJECT_ID( '[Senate].[Vote]' ) , 1 );" ) ,
     ( "Tallying Results" ,
 "The [tally of results][1] is in an election is the count of all votes cast
@@ -304,7 +332,7 @@ BEGIN
       ORDER BY [Value];
   RETURN;
 END" ) ,
-    ( "Definition of Voters" ,
+    ( "Rights of Voters" ,
 "A [voter][1] may [cast votes][2] in elections in the senate, view any
 [ballots][3], [ballot choices][4], [elections][5], [open elections][6],
 [puplic votes][7], and [tallied results][8].
@@ -317,8 +345,7 @@ END" ) ,
   [6]: OBJECT::[Senate].[PublicVotes]
   [7]: OBJECT::[Senate].[OpenElections]
   [8]: OBJECT::[Senate].[TallyResults]" ,
-"CREATE ROLE [Voter];
-GRANT EXECUTE ON OBJECT::[Senate].[Vote] TO [Voter];
+"GRANT EXECUTE ON OBJECT::[Senate].[Vote] TO [Voter];
 GRANT SELECT, REFERENCES ON OBJECT::[Senate].[Ballots] TO [Voter];
 GRANT SELECT, REFERENCES ON OBJECT::[Senate].[BallotChoices] TO [Voter];
 GRANT SELECT, REFERENCES ON OBJECT::[Senate].[Elections] TO [Voter];
@@ -434,20 +461,47 @@ AS
 BEGIN
   RETURN DATEADD( DAY , 3 , @beginsOn );
 END" ) ,
+    ( "Definition of Permission to Call for Votes" , 
+"A given person is [permitted call for votes][1] on a given bill if any of the
+following conditions are true:
+
+ *  said person is the proposer of said [bill][2]
+ *  said person is the [President of the Senate][3]
+
+  [1]: OBJECT::[Senate].[MayCallForVotes]
+  [2]: OBJECT::[Senate].[Bills]
+  [3]: ROLE::[President]" ,
+"CREATE FUNCTION [Senate].[MayCallForVotes](
+  @calledBy int ,
+  @billId bigint )
+  RETURNS bit
+AS
+BEGIN
+  DECLARE @result bit;
+  SELECT
+      @result =
+        CASE [ProposedBy]
+          WHEN @calledBy THEN 1
+          ELSE IS_ROLEMEMBER( 'President' , USER_NAME( @calledBy ) )
+        END
+    FROM [Senate].[Bills]
+    WHERE [Id] = @billId;
+  RETURN @result;
+END" ) ,
     ( "Calling for Votes" ,
 "To [call for votes][1] on a given bill is to perform the following procedure:
 
   1. if a call for votes had previously been made for said bill, raise an
      error and stop
-  2. if the person calling for votes on said bill is not the same person
-     that proposed said bill, raise an error and stop
-  3. evaluate the simple action point requirement associated with this
-     process
+  2. if the person calling for votes is not [permitted to call for votes on
+     said bill][2], raise an error and stop
+  3. evaluate the action point requirement associated with this process
   4. open an election using the standard ballot
   5. record ancillary information in the activity log regarding this process
   6. record the call for votes that was made
 
-  [1]: OBJECT::[Senate].[CalculateElectionClosedOn]" ,
+  [1]: OBJECT::[Senate].[CallForVotes]
+  [1]: OBJECT::[Senate].[MayCallForVotes]" ,
 "CREATE PROCEDURE [Senate].[CallForVotes]
   @billId int ,
   @electionId bigint = NULL OUTPUT
@@ -489,10 +543,9 @@ BEGIN
     FROM [Senate].[Bills]
     WHERE [Id] = @billId;
 
-  IF @proposedBy <> @calledBy
+  IF [Senate].[MayCallForVotes]( @calledBy , @billId ) = 0
     BEGIN
-      SET @err =
-        'A call for votes on a bill may only be made by its proposer.';
+      SET @err = 'You are not permitted to call for votes on this bill';
       THROW 50000 , @err , 1;
     END
 
@@ -500,10 +553,20 @@ BEGIN
 
   IF @result = 0
     BEGIN
-      INSERT [Senate].[Elections]
-          ( [BallotId] , [IsPublic] , [OpenedOn] , [ClosedOn] )
-        VALUES
-          ( @ballotId , 1 , @openedOn , @closedOn );
+      INSERT [Senate].[Elections](
+            [BallotId] ,
+            [IsPublic] ,
+            [OpenedOn] ,
+            [OpenedBy] ,
+            [ClosedOn] ,
+            [ClosedBy])
+        VALUES(
+            @ballotId ,
+            1 ,
+            @openedOn ,
+            @calledBy ,
+            @closedOn ,
+            @calledBy );
       SELECT @electionId = SCOPE_IDENTITY();
       EXEC [Action].[RecordActionLogBills] @logId , @billId;
 
@@ -526,31 +589,177 @@ BEGIN
   SET NOCOUNT OFF;
   RETURN @result;
 END" ) ,
-    ( "Simple Action Point Requirement for the Calling for Votes" ,
-"The [simple action point requirement][1] for [casting][2] a vote in the
-senate shall be five (5) action points.
+    ( "Action Point Requirement for the Calling for Votes" ,
+"The [action point requirement][1] for [calling for votes][2] on a bill in the
+senate shall be:
 
-  [1]: OBJECT::[Action].[SimpleActionPointRequirements]
-  [2]: OBJECT::[Senate].[CallsForVotes]" ,
-"INSERT [Action].[SimpleActionPointRequirements] ( [ProcId] , [Points] )
-  VALUES ( OBJECT_ID( '[Senate].[CallsForVotes]' ) , 5 );" ) ,
-    ( "Access to Calls for Votes" ,
-"Any [senator][1] may [call for votes][2]. Any [voter][3], view [calls for
-votes][4], view the [standard ballot id][5], calculate the [quorum][6] and
-[threshold][7] for a call for votes on a bill, and the [opening][8] and
-[closing][9] date for an election associated with a call for votes on a
-bill.
+ *  five (5) action points.
+ *  negative four (-4) action points for the [President of the Senate][3];
+
+  [1]: OBJECT::[Senate].[ActionPointRequirements]
+  [2]: OBJECT::[Senate].[CallsForVotes]
+  [2]: ROLE::[President]" ,
+"INSERT [Action].[ActionPointRequirements] ( [ProcId] , [Points] , [RoleId] )
+  VALUES
+    ( OBJECT_ID( '[Senate].[CallsForVotes]' ) , 5 , NULL ) ,
+    ( OBJECT_ID( '[Senate].[CallsForVotes]' ) , -4 , USER_ID( 'President' ) );" ) ,
+    ( "Permission to Immediately Open an Election" ,
+"A given person is [permitted to immediately open][1] a given election if all
+of the following conditions are true:
+
+ *  said election was created from a [call for votes][2] on bill.
+ *  said person is the [President of the Senate][3]
+
+  [1]: OBJECT::[Senate].[MayOpenElection]
+  [2]: OBJECT::[Senate].[CallsForVotes]
+  [3]: ROLE::[President]" ,
+"CREATE FUNCTION [Senate].[MayOpenElection](
+  @openedBy int ,
+  @electionId bigint )
+  RETURNS bit
+AS
+BEGIN
+  DECLARE @result bit;
+  IF EXISTS( SELECT * 
+               FROM [Senate].[CallsForVotes]
+               WHERE [ElectionId] = @electionId )
+    SET @result = IS_ROLEMEMBER( 'President' , USER_NAME( @openedBy ) );
+  ELSE
+    SET @result = 0;
+  RETURN @result;
+END" ) ,
+    ( "Procedure to Immediately Open an Election" ,
+"To [immediately open][1] a given election is to perform the following
+process:
+
+ 1. if said election is currently open, raise an error and stop
+ 1. if said election is currently closed, raise an error and stop
+ 2. if the opener is not permitted to open the election, raise an error and
+    stop
+ 3. set the open date and time of the election to the current date and time
+
+  [1]: OBJECT::[Senate].[OpenElection]" ,
+"CREATE PROCEDURE [Senate].[OpenElection]
+  @electionId bigint
+AS
+BEGIN
+  DECLARE @openedBy int = USER_ID() ,
+          @err nvarchar(400) ,
+          @result int = -1;
+  IF EXISTS( SELECT * 
+               FROM [Senate].[OpenElections]
+               WHERE [ElectionId] = @electionId )
+    SET @err = 'the election is open';
+
+  IF EXISTS( SELECT * 
+               FROM [Senate].[ClosedElections]
+               WHERE [ElectionId] = @electionId )
+    SET @err = 'the election is closed';
+
+  IF [Senate].[MayOpenElection]( USER_ID() , @electionId ) = 0
+    SET @err = 'You are not permitted to open this election';
+
+  IF @err IS NOT NULL
+    THROW 50000 , @err , 1;
+
+  UPDATE [Senate].[Elections]
+    SET
+      [OpenedOn] = GETUTCDATE() ,
+      [OpenedBy] = @openedBy
+    WHERE [Id] = @electionId;
+  RETURN @result;
+END" ) ,
+    ( "Permission to Immediately Close an Election" ,
+"A given person is [permitted to immediately close][1] a given election if all
+of the following conditions are true:
+
+ *  said election was created from a [call for votes][2] on bill.
+ *  the required quorum as specified in said call for votes has been reached.
+ *  said person is the [President of the Senate][3]
+
+  [1]: OBJECT::[Senate].[MayOpenElection]
+  [2]: OBJECT::[Senate].[CallsForVotes]
+  [3]: ROLE::[President]" ,
+"CREATE FUNCTION [Senate].[MayCloseElection](
+  @closedBy int ,
+  @electionId bigint )
+  RETURNS bit
+AS
+BEGIN
+  DECLARE @billId bigint ,
+          @quorum int ,
+          @totalVotes int ,
+          @result bit;
+  SELECT
+      @billId = [BillId] ,
+      @quorum = [Quorum] 
+    FROM [Senate].[CallsForVotes]
+    WHERE [ElectionId] = @electionId
+  SELECT @totalVotes = COUNT( [CastBy] )
+    FROM [Senate].[Votes]
+    WHERE [ElectionId] = @electionId;
+  IF @billId IS NOT NULL AND @totalVotes >= @quorum
+    SET @result = IS_ROLEMEMBER( 'President' , USER_NAME( @closedBy ) );
+  ELSE
+    SET @result = 0;
+  RETURN @result;
+END" ) ,
+    ( "Procedure to Immediately Open an Election" ,
+"To [immediately close][1] a given election is to perform the following
+process:
+
+ 1. if said election is not currently open, raise an error and stop
+ 2. if the opener is not permitted to open the election, raise an error and
+    stop
+ 3. set the open date and time of the election to the current date and time
+
+  [1]: OBJECT::[Senate].[CloseElection]" ,
+"CREATE PROCEDURE [Senate].[CloseElection]
+  @electionId bigint
+AS
+BEGIN
+  DECLARE @closedBy int = USER_ID() ,
+          @err nvarchar(400) ,
+          @result int = -1;
+  IF NOT EXISTS( SELECT * 
+                   FROM [Senate].[OpenElections]
+                   WHERE [ElectionId] = @electionId )
+    SET @err = 'the election is not open';
+
+  IF [Senate].[MayCloseElection]( @closedBy , @electionId ) = 0
+    SET @err = 'You are not permitted to close this election';
+
+  IF @err IS NOT NULL
+    THROW 50000 , @err , 1;
+
+  UPDATE [Senate].[Elections]
+    SET
+      [CloseOn] = GETUTCDATE() ,
+      [CloseBy] = @closedBy
+    WHERE [Id] = @electionId;
+  RETURN @result;
+END" ) ,
+    ( "Access to Voting Procedures" ,
+"Any [senator][1] may [call for votes][2] and [immediately open][3] and
+[close][4] an election. Any [voter][5], view [calls for votes][6], view the
+[standard ballot id][7], calculate the [quorum][8] and [threshold][9] for a
+call for votes on a bill, and the [opening][10] and [closing][11] date for an
+election associated with a call for votes on a bill.
 
   [1]: ROLE::[Senator]
   [2]: OBJECT::[Senate].[CallForVotes]
-  [1]: ROLE::[Voter]
-  [4]: OBJECT::[Senate].[GetStandardBallotId]
-  [5]: OBJECT::[Senate].[CalculateQuorum]
-  [6]: OBJECT::[Senate].[CalculateThreshold]
-  [7]: OBJECT::[Senate].[CalculateElectionOpenedOn]
-  [8]: OBJECT::[Senate].[CalculateElectionClosedOn]
-  [8]: OBJECT::[Senate].[CallsForVotes]" ,
+  [3]: OBJECT::[Senate].[OpenElection]
+  [4]: OBJECT::[Senate].[CloseElection]
+  [5]: ROLE::[Voter]
+  [6]: OBJECT::[Senate].[GetStandardBallotId]
+  [7]: OBJECT::[Senate].[CalculateQuorum]
+  [8]: OBJECT::[Senate].[CalculateThreshold]
+  [9]: OBJECT::[Senate].[CalculateElectionOpenedOn]
+  [10]: OBJECT::[Senate].[CalculateElectionClosedOn]
+  [11]: OBJECT::[Senate].[CallsForVotes]" ,
 "GRANT EXECUTE ON OBJECT::[Senate].[CallForVotes] TO [Senator];
+GRANT EXECUTE ON OBJECT::[Senate].[OpenElection] TO [Senator];
+GRANT EXECUTE ON OBJECT::[Senate].[CloseElection] TO [Senator];
 GRANT EXECUTE ON OBJECT::[Senate].[GetStandardBallotId] TO [Voter];
 GRANT EXECUTE ON OBJECT::[Senate].[CalculateQuorum] TO [Voter];
 GRANT EXECUTE ON OBJECT::[Senate].[CalculateThreshold] TO [Voter];

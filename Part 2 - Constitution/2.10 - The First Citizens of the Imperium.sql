@@ -56,7 +56,13 @@ WHILE @@FETCH_STATUS = 0
   END
 CLOSE [NameCursor]
 DEALLOCATE [NameCursor]
-SELECT * FROM @users;" );
+SELECT * FROM @users;" ) ,
+    ( "Appointment of First President of the Senate" ,
+"[pswg][1] shall be the first [President of the Senate][2].
+
+  [1]: USER::[pswg]
+  [2]: ROLE::[President]" ,
+"ALTER ROLE [President] ADD MEMBER [pswg]" );
 
 EXEC [Imperium].[Enact] 
     "The First Citizens of Alpha" , 
