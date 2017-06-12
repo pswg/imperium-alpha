@@ -160,18 +160,22 @@ BEGIN
 
   SELECT
       @newUser = 0 ,
-      @prevTimer = [Timer] ,
-      @curAP = [Value]
+      @curAP = [Value] ,
+      @prevTimer = [Timer]
     FROM [Action].[ActionPoints]
     WHERE [UserId] = @userId;
 
   IF @newUser = 1
-    SELECT TOP(1)
-        @curAP = 0 ,
-        @prevTimer = [Date]
-      FROM [Imperium].[CitizenshipStatus]
-      WHERE [CitizenId] = @userId
-      ORDER BY [Id] DESC;
+    BEGIN
+      SELECT TOP(1) 
+          @curAP = 0 ,
+          @prevTimer = [Date]
+        FROM [Imperium].[CitizenshipStatus]
+        WHERE [CitizenId] = @userId
+        ORDER BY [Id] DESC;
+      INSERT [Action].[ActionPoints]( [UserId] , [Value] , [Timer] )
+        VALUES( @userId , 0 , @prevTimer );
+    END
 
   SET @maxAP = [Action].[MaximumActionPoints]( @userId );
   SET @rate = [Action].[RecoveryRate]( @userId );
@@ -182,15 +186,6 @@ BEGIN
 
   IF @points <= 0
     RETURN 0;
-
-  IF NOT EXISTS( SELECT *
-                   FROM [Action].[ActionPoints]
-                   WHERE [UserId] = @userId )
-    BEGIN
-      INSERT [Action].[ActionPoints]( [UserId] , [Value] , [Timer] )
-        VALUES( @userId , @points , @timer );
-      RETURN 0;
-    END
 
   UPDATE [Action].[ActionPoints]
     SET
