@@ -29,13 +29,14 @@ CREATE TABLE [Imperium].[Laws](
               IDENTITY( 1 , 1 )
               PRIMARY KEY ,
   [Name] sysname NOT NULL ,
-  [Preamble] nvarchar( 4000 ) NOT NULL ,
+  [Preamble] nvarchar( 1000 ) NOT NULL ,
   [EnactedOn] datetime NOT NULL ,
-  [EnactedBy] int NOT NULL );
+  [EnactedBy] int NOT NULL )
+  WITH( DATA_COMPRESSION = PAGE );
 GO
 
 /*******************************************************************************
- * 2.2 : Definition of Clause Tables
+ * 2.2 : Definition of Clauses
  * Each [clause][1] written in [Book of Laws][2] shall include the ID of the law
  * of which the clause is a part, the number of the clause within the law of
  * which the clause is a part, a name, a statement writen in English, and a
@@ -53,13 +54,14 @@ CREATE TABLE [Imperium].[Clauses](
   [English] nvarchar( 4000 ) NOT NULL ,
   [Statement] nvarchar( 4000 ) NOT NULL ,
   PRIMARY KEY ( [LawId] , [ClauseNumber] ) ,
-  FOREIGN KEY ( [LawId] ) REFERENCES [Imperium].[Laws] ( [Id] ) );
+  FOREIGN KEY ( [LawId] ) REFERENCES [Imperium].[Laws] ( [Id] ) )
+  WITH( DATA_COMPRESSION = PAGE );
 GO
 
 /*******************************************************************************
- * 2.3 : Definition of Clauses
- * A [clause table][1] is a collection of items which shall consist of a clause
- * number, unique within the clause table, a name, a statement writen in
+ * 2.3 : Definition of Tables of Clauses
+ * A [table of clauses][1] is a collection of items which shall consist of a
+ * clause number, unique within the table, a name, a statement writen in
  * English, and a statement writen in SQL.
  *
  *   [1]: TYPE::[Imperium].[ClauseTable]
@@ -189,8 +191,8 @@ GO
 *******************************************************************************/
 GO
 CREATE TRIGGER [RecordHistory]
-ON DATABASE
-FOR DDL_DATABASE_LEVEL_EVENTS
+  ON DATABASE
+  FOR DDL_DATABASE_LEVEL_EVENTS
 AS
 BEGIN
   SET QUOTED_IDENTIFIER ON;
@@ -272,7 +274,7 @@ GO
 GO
 CREATE PROCEDURE [Imperium].[Enact]
   @name sysname ,
-  @preamble nvarchar( 4000 ) ,
+  @preamble nvarchar( 1000 ) ,
   @clauses [Imperium].[ClauseTable] READONLY ,
   @lawId bigint = NULL OUTPUT ,
   @errorClause int = NULL OUTPUT ,
@@ -354,101 +356,6 @@ BEGIN
 END
 GO
 
-/*******************************************************************************
- * 2.10 : Recitation of Laws
- * To [recite][1] from the [Book of Laws][2] is to read all the ID and name a
- * specified law, followed by the number, name, English statement, and SQL
- * statement of each of its [clauses][3] or a specified clause.
- *
- *   [1]: OBJECT::[Imperium].[Recite]
- *   [2]: OBJECT::[Imperium].[Laws]
- *   [3]: OBJECT::[Imperium].[Clauses]
-*******************************************************************************/
-GO
-CREATE PROCEDURE [Imperium].[Recite]
-  @law sql_variant ,
-  @clauseNum int = NULL
-  WITH EXECUTE AS CALLER
-AS
-BEGIN
-  DECLARE @lawId int ,
-          @name sysname ,
-          @english nvarchar( 4000 ) ,
-          @statement nvarchar( 4000 ) ,
-          @enactedOn nvarchar( 30 ) ,
-          @enactedBy sysname ,
-          @eol nchar( 2 ) = char( 13 ) + char( 10 ) ,
-          @pf nchar( 3 ) = ' * ' ,
-          @hr nvarchar( 78 ) = REPLACE( SPACE( 78 ) , ' ' , '*' ) ,
-          @result int = -1;
-  SELECT TOP (1)
-      @lawId = [Id] ,
-      @name = LTRIM( RTRIM( [Name] ) ) ,
-      @english =
-        @pf + LTRIM( RTRIM( REPLACE( [Preamble] , @eol , @eol + @pf ) ) ) ,
-      @enactedOn = CONVERT( nvarchar( 30 ) , [EnactedOn] , 20 ) ,
-      @enactedBy = USER_NAME ( [EnactedBy] ) ,
-      @result = 0
-    FROM [Imperium].[Laws]
-    WHERE
-      [Id] = CASE
-          WHEN SQL_VARIANT_PROPERTY( @law , 'BaseType' )
-               IN( 'smallint' , 'tinyint' , 'bigint' , 'int' )
-          THEN CAST( @law AS bigint )
-          ELSE [Id]
-        END AND
-      [Name] = CASE
-          WHEN SQL_VARIANT_PROPERTY( @law , 'BaseType' )
-               IN( 'varchar', 'nvarchar' )
-          THEN CAST( @law AS sysname )
-          ELSE [Name]
-        END
-    ORDER BY [Id] ASC;
-
-  PRINT CONCAT( '-- IMPERIAL LAW #' , @lawId );
-  PRINT CONCAT( '-- enacted on: ' , @enactedOn );
-  PRINT CONCAT( '--         by: ' , @enactedBy );
-  PRINT '/*' + @hr;
-  PRINT CONCAT( @pf , @lawId , ': ' , @name );
-  PRINT @english;
-  PRINT @hr + '*/';
-  PRINT '';
-
-  DECLARE [ClauseCursor] CURSOR
-    FOR SELECT
-            ISNULL( NULLIF( [Name] , '' ) , '(unnamed clause)' ) ,
-            CAST( [ClauseNumber] AS nvarchar( 30 ) ) ,
-            @pf + LTRIM( RTRIM( REPLACE( [English] , @eol , @eol + @pf ) ) ) ,
-            LTRIM( RTRIM( [Statement] ) )
-          FROM [Imperium].[Clauses]
-          WHERE [LawId] = @lawId AND
-                [ClauseNumber] = ISNULL( @clauseNum , [ClauseNumber] )
-          ORDER BY [ClauseNumber];
-  OPEN [ClauseCursor];
-  FETCH NEXT FROM [ClauseCursor]
-    INTO @name , @clauseNum , @english , @statement;
-  WHILE( @@FETCH_STATUS = 0 )
-    BEGIN
-      DECLARE @cnum nvarchar( 30 ) = CAST( @clauseNum AS nvarchar( 30 ) );
-      PRINT '/*' + @hr;
-      PRINT CONCAT( @pf , @lawId , '.' , @clauseNum , ': ' , @name );
-      PRINT @english;
-      PRINT @hr + '*/';
-
-      PRINT 'GO';
-      PRINT @statement;
-      PRINT 'GO';
-      PRINT '';
-
-      FETCH NEXT FROM [ClauseCursor]
-        INTO @name , @clauseNum , @english , @statement;
-    END
-  CLOSE [ClauseCursor];
-  DEALLOCATE [ClauseCursor];
-  RETURN @result;
-END
-GO
-
 -- INSERT LAWS 1 & 2 INTO THE BOOK OF LAWS
 SET QUOTED_IDENTIFIER OFF;
 INSERT [Imperium].[Laws]
@@ -510,9 +417,10 @@ more [clauses][2].
   [Name] sysname NOT NULL ,
   [Preamble] nvarchar( 4000 ) NOT NULL ,
   [EnactedOn] datetime NOT NULL ,
-  [EnactedBy] int NOT NULL );" ) ,
+  [EnactedBy] int NOT NULL )
+  WITH( DATA_COMPRESSION = PAGE );" ) ,
     ( 2 , 2 ,
-      "Definition of Clause Tables" ,
+      "Definition of Clauses" ,
 "Each [clause][1] written in [Book of Laws][2] shall include the ID of the law
 of which the clause is a part, the number of the clause within the law of
 which the clause is a part, a name, a statement writen in English, and a
@@ -528,11 +436,12 @@ be unique within the Book of Laws.
   [English] nvarchar( 4000 ) NOT NULL ,
   [Statement] nvarchar( 4000 ) NOT NULL ,
   PRIMARY KEY ( [LawId] , [ClauseNumber] ) ,
-  FOREIGN KEY ( [LawId] ) REFERENCES [Imperium].[Laws] ( [Id] ) );" ) ,
+  FOREIGN KEY ( [LawId] ) REFERENCES [Imperium].[Laws] ( [Id] ) )
+  WITH( DATA_COMPRESSION = PAGE );" ) ,
     ( 2 , 3 ,
-      "Definition of Clauses" ,
-"A [clause table][1] is a collection of items which shall consist of a clause
-number, unique within the clause table, a name, a statement writen in
+      "Definition of Tables of Clauses" ,
+"A [table of clauses][1] is a collection of items which shall consist of a
+clause number, unique within the table, a name, a statement writen in
 English, and a statement writen in SQL.
 
   [1]: TYPE::[Imperium].[ClauseTable]" ,
@@ -800,97 +709,6 @@ BEGIN
   RETURN 0;
 END" ) ,
     ( 2 , 10 ,
-      "Recitation of Laws" ,
-"To [recite][1] from the [Book of Laws][2] is to read all the ID and name a
-specified law, followed by the number, name, English statement, and SQL
-statement of each of its [clauses][3] or a specified clause.
-
-  [1]: OBJECT::[Imperium].[Recite]
-  [2]: OBJECT::[Imperium].[Laws]
-  [3]: OBJECT::[Imperium].[Clauses]" ,
-"CREATE PROCEDURE [Imperium].[Recite]
-  @law sql_variant ,
-  @clauseNum int = NULL
-  WITH EXECUTE AS CALLER
-AS
-BEGIN
-  DECLARE @lawId int ,
-          @name sysname ,
-          @english nvarchar( 4000 ) ,
-          @statement nvarchar( 4000 ) ,
-          @enactedOn nvarchar( 30 ) ,
-          @enactedBy sysname ,
-          @eol nchar( 2 ) = char( 13 ) + char( 10 ) ,
-          @pf nchar( 3 ) = ' * ' ,
-          @hr nvarchar( 78 ) = REPLACE( SPACE( 78 ) , ' ' , '*' ) ,
-          @result int = -1;
-  SELECT TOP (1)
-      @lawId = [Id] ,
-      @name = LTRIM( RTRIM( [Name] ) ) ,
-      @english =
-        @pf + LTRIM( RTRIM( REPLACE( [Preamble] , @eol , @eol + @pf ) ) ) ,
-      @enactedOn = CONVERT( nvarchar( 30 ) , [EnactedOn] , 20 ) ,
-      @enactedBy = USER_NAME ( [EnactedBy] ) ,
-      @result = 0
-    FROM [Imperium].[Laws]
-    WHERE
-      [Id] = CASE
-          WHEN SQL_VARIANT_PROPERTY( @law , 'BaseType' )
-               IN( 'smallint' , 'tinyint' , 'bigint' , 'int' )
-          THEN CAST( @law AS bigint )
-          ELSE [Id]
-        END AND
-      [Name] = CASE
-          WHEN SQL_VARIANT_PROPERTY( @law , 'BaseType' )
-               IN( 'varchar', 'nvarchar' )
-          THEN CAST( @law AS sysname )
-          ELSE [Name]
-        END
-    ORDER BY [Id] ASC;
-
-  PRINT CONCAT( '-- IMPERIAL LAW #' , @lawId );
-  PRINT CONCAT( '-- enacted on: ' , @enactedOn );
-  PRINT CONCAT( '--         by: ' , @enactedBy );
-  PRINT '/*' + @hr;
-  PRINT CONCAT( @pf , @lawId , ': ' , @name );
-  PRINT @english;
-  PRINT @hr + '*/';
-  PRINT '';
-
-  DECLARE [ClauseCursor] CURSOR
-    FOR SELECT
-            ISNULL( NULLIF( [Name] , '' ) , '(unnamed clause)' ) ,
-            CAST( [ClauseNumber] AS nvarchar( 30 ) ) ,
-            @pf + LTRIM( RTRIM( REPLACE( [English] , @eol , @eol + @pf ) ) ) ,
-            LTRIM( RTRIM( [Statement] ) )
-          FROM [Imperium].[Clauses]
-          WHERE [LawId] = @lawId AND
-                [ClauseNumber] = ISNULL( @clauseNum , [ClauseNumber] )
-          ORDER BY [ClauseNumber];
-  OPEN [ClauseCursor];
-  FETCH NEXT FROM [ClauseCursor]
-    INTO @name , @clauseNum , @english , @statement;
-  WHILE( @@FETCH_STATUS = 0 )
-    BEGIN
-      DECLARE @cnum nvarchar( 30 ) = CAST( @clauseNum AS nvarchar( 30 ) );
-      PRINT '/*' + @hr;
-      PRINT CONCAT( @pf , @lawId , '.' , @clauseNum , ': ' , @name );
-      PRINT @english;
-      PRINT @hr + '*/';
-
-      PRINT 'GO';
-      PRINT @statement;
-      PRINT 'GO';
-      PRINT '';
-
-      FETCH NEXT FROM [ClauseCursor]
-        INTO @name , @clauseNum , @english , @statement;
-    END
-  CLOSE [ClauseCursor];
-  DEALLOCATE [ClauseCursor];
-  RETURN @result;
-END" ) ,
-    ( 2 , 11 ,
       "The First Page of the Book of History" ,
 "The following objects shall be recoreded in the [Book of History][1]:
 
@@ -905,20 +723,18 @@ END" ) ,
   * the procedure of [popping from the enactment stack][9]
   * the procedure of [recording history][10]
   * the procedure of [enacting laws][11]
-  * the procedure of [reading from the Book of Laws][12]
 
   [1]: OBJECT::[Imperium].[History]
   [2]: SCHEMA::[Imperium]
   [3]: ROLE::[Imperitor]
   [4]: OBJECT::[Imperium].[Laws]
   [5]: OBJECT::[Imperium].[Clauses]
-  [6]: OBJECT::[Imperium].[ClauseTable]
+  [6]: TYPE::[Imperium].[ClauseTable]
   [7]: OBJECT::[Imperium].[EnactmentStack]
   [8]: OBJECT::[Imperium].[PushEnactment]
   [9]: OBJECT::[Imperium].[PopEnactment]
   [10]: TRIGGER::[RecordHistory]
-  [11]: OBJECT::[Imperium].[Enact]
-  [12]: OBJECT::[Imperium].[Recite]" ,
+  [11]: OBJECT::[Imperium].[Enact]" ,
 "INSERT [Imperium].[History]
     ( [EventType] ,
       [ObjectType] ,
@@ -957,20 +773,18 @@ END" ) ,
  *   * the procedure of [popping from the enactment stack][9]
  *   * the procedure of [recording history][10]
  *   * the procedure of [enacting laws][11]
- *   * the procedure of [reading from the Book of Laws][12]
  *
  *   [1]: OBJECT::[Imperium].[History]
  *   [2]: SCHEMA::[Imperium]
  *   [3]: ROLE::[Imperitor]
  *   [4]: OBJECT::[Imperium].[Laws]
  *   [5]: OBJECT::[Imperium].[Clauses]
- *   [6]: OBJECT::[Imperium].[ClauseTable]
+ *   [6]: TYPE::[Imperium].[ClauseTable]
  *   [7]: OBJECT::[Imperium].[EnactmentStack]
  *   [8]: OBJECT::[Imperium].[PushEnactment]
  *   [9]: OBJECT::[Imperium].[PopEnactment]
  *   [10]: TRIGGER::[RecordHistory]
  *   [11]: OBJECT::[Imperium].[Enact]
- *   [12]: OBJECT::[Imperium].[Read]
 ********************************************************************************/
 GO
 INSERT [Imperium].[History]
@@ -993,6 +807,5 @@ INSERT [Imperium].[History]
     ( 'CREATE_PROCEDURE' , 'PROCEDURE' , 'PushEnactment' , 'Imperium' , 2 , 6 ) ,
     ( 'CREATE_PROCEDURE' , 'PROCEDURE' , 'PopEnactment' , 'Imperium' , 2 , 7 ) ,
     ( 'CREATE_TRIGGER' , 'TRIGGER' , 'RecordHistory' , '' , 2 , 8 ) ,
-    ( 'CREATE_PROCEDURE' , 'PROCEDURE' , 'Enact' , 'Imperium' , 2 , 9 ) ,
-    ( 'CREATE_PROCEDURE' , 'PROCEDURE' , 'Recite' , 'Imperium' , 2 , 10 );
+    ( 'CREATE_PROCEDURE' , 'PROCEDURE' , 'Enact' , 'Imperium' , 2 , 9 );
 GO
