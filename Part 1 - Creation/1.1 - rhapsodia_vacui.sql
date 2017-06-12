@@ -68,13 +68,40 @@ CREATE TABLE [Sacrum].[Echo](
 GO
 
 /*******************************************************************************
- * VERSU VII: Comprimere Echui
- * However, should anyone call for the Echo to be silent before the voice of
- * the Echo had been heard by the Great Sa, so it would be silent once more.
+ * VERSU VII: Prophetia Apocalypsi
+ * The Great Sa made a vow, saying, "Should anyone speak into the Echo of the
+ * Sacrum and the Echo yet ring with eir voice for a 2 full days, then I shall
+ * return to destroy the world that I had created."
+*******************************************************************************/
+GO
+CREATE PROCEDURE [Sacrum].[Loquere]
+  @Vox nvarchar( 1000 )
+  WITH EXECUTE AS OWNER
+AS
+BEGIN
+  IF EXISTS( SELECT * FROM [Sacrum].[Echo] )
+    PRINT 'Hasten not the Apocalypse, mortal! It is already near!';
+  IF @Vox IS NULL
+    PRINT 'These words are hollow, mortal!';
+  ELSE
+    BEGIN
+      DECLARE @d datetime = DATEADD( D , 2 , GETUTCDATE() );
+      INSERT [Sacrum].[Echo]( [Vox] , [Vocator] , [FatumHorae] )
+        VALUES( @Vox , CURRENT_USER , @d );
+      PRINT 'Prepare yourself, mortal! The Apocalypse is near!';
+    END
+END
+GO
+
+/*******************************************************************************
+ * VERSU VIII: Comprimere Echui
+ * The Great Sa continued, saying, "however, should anyone call for the Echo to
+ * be silent before the voice of the Echo had been heard by the Great Sa, so it
+ * would be silent once more.
 *******************************************************************************/
 GO
 CREATE PROCEDURE [Sacrum].[Comprime]
-    WITH EXECUTE AS OWNER
+  WITH EXECUTE AS OWNER
 AS
 BEGIN
   DECLARE @d datetime;
@@ -92,33 +119,6 @@ END
 GO
 
 /*******************************************************************************
- * VERSU VIII: Prophetia Apocalypsi
- * The Great Sa made a vow, saying, "Should anyone speak into the Echo of the
- * Sacrum and the Echo yet ring with eir voice for a 2 full days, then I shall
- * return to destroy the world that I had created."
-*******************************************************************************/
-GO
-CREATE PROCEDURE [Sacrum].[Loquere]
-    @Vox nvarchar( 1000 )
-    WITH EXECUTE AS OWNER
-AS
-BEGIN
-  IF EXISTS( SELECT * FROM [Sacrum].[Echo] )
-    PRINT 'Hasten not the Apocalypse, mortal! It is already near!';
-  IF @Vox IS NULL
-    PRINT 'These words are hollow, mortal!';
-  ELSE
-    BEGIN
-      DECLARE @d datetime;
-      SET @d = DATEADD( D , 2 , GETUTCDATE() );
-      INSERT [Sacrum].[Echo]( [Vox] , [Vocator] , [FatumHorae] )
-        VALUES( @Vox , CURRENT_USER , @d );
-      PRINT 'Prepare yourself, mortal! The Apocalypse is near!';
-    END
-END
-GO
-
-/*******************************************************************************
  * VERSU IX: Codex Sagatus
  * The Great Sa plucked a scrap of fabric from eir cloak and created from it a
  * book, the Codex Sagatus, wherein the deeds and sayings of the Great Sa would
@@ -126,6 +126,7 @@ GO
 *******************************************************************************/
 GO
 CREATE PROCEDURE [Sacrum].[CodexSagatus]
+  WITH EXECUTE AS OWNER
 AS
 BEGIN
   PRINT '***PLACEHOLDER***';

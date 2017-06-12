@@ -14,17 +14,18 @@ def generate_codex_sagatus():
     content = f.readlines()
 
   with open('Part 1 - Creation\\1.2 - codex_sagatus.sql', 'w') as f:
-    print('', file=f)
     print(SQL_COPYRIGHT_NOTICE, file=f)
     print('', file=f)
 
     print('ALTER PROCEDURE [Sacrum].[CodexSagatus]', file=f)
+    print('  WITH EXECUTE AS OWNER', file=f)
     print('AS', file=f)
+    print('BEGIN', file=f)
     for line in content:
       line = line.replace("'", "''").rstrip()
       if not line.startswith('--'):
         print("  PRINT '" + line + "';", file=f)
-    print('BEGIN', file=f)
+    print('END', file=f)
 
   print("Done.")
 

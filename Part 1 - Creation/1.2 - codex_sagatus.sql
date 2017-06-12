@@ -1,10 +1,11 @@
-
 -- Copyright (c) Patrick Kohler
 -- Licensed under the MIT License.
 -- See License.txt in the project root for license information.
 
 ALTER PROCEDURE [Sacrum].[CodexSagatus]
+  WITH EXECUTE AS OWNER
 AS
+BEGIN
   PRINT '';
   PRINT '/*******************************************************************************';
   PRINT ' * VERSU I: Rhapsodia Vacui';
@@ -72,13 +73,40 @@ AS
   PRINT 'GO';
   PRINT '';
   PRINT '/*******************************************************************************';
-  PRINT ' * VERSU VII: Comprimere Echui';
-  PRINT ' * However, should anyone call for the Echo to be silent before the voice of';
-  PRINT ' * the Echo had been heard by the Great Sa, so it would be silent once more.';
+  PRINT ' * VERSU VII: Prophetia Apocalypsi';
+  PRINT ' * The Great Sa made a vow, saying, "Should anyone speak into the Echo of the';
+  PRINT ' * Sacrum and the Echo yet ring with eir voice for a 2 full days, then I shall';
+  PRINT ' * return to destroy the world that I had created."';
+  PRINT '*******************************************************************************/';
+  PRINT 'GO';
+  PRINT 'CREATE PROCEDURE [Sacrum].[Loquere]';
+  PRINT '  @Vox nvarchar( 1000 )';
+  PRINT '  WITH EXECUTE AS OWNER';
+  PRINT 'AS';
+  PRINT 'BEGIN';
+  PRINT '  IF EXISTS( SELECT * FROM [Sacrum].[Echo] )';
+  PRINT '    PRINT ''Hasten not the Apocalypse, mortal! It is already near!'';';
+  PRINT '  IF @Vox IS NULL';
+  PRINT '    PRINT ''These words are hollow, mortal!'';';
+  PRINT '  ELSE';
+  PRINT '    BEGIN';
+  PRINT '      DECLARE @d datetime = DATEADD( D , 2 , GETUTCDATE() );';
+  PRINT '      INSERT [Sacrum].[Echo]( [Vox] , [Vocator] , [FatumHorae] )';
+  PRINT '        VALUES( @Vox , CURRENT_USER , @d );';
+  PRINT '      PRINT ''Prepare yourself, mortal! The Apocalypse is near!'';';
+  PRINT '    END';
+  PRINT 'END';
+  PRINT 'GO';
+  PRINT '';
+  PRINT '/*******************************************************************************';
+  PRINT ' * VERSU VIII: Comprimere Echui';
+  PRINT ' * The Great Sa continued, saying, "however, should anyone call for the Echo to';
+  PRINT ' * be silent before the voice of the Echo had been heard by the Great Sa, so it';
+  PRINT ' * would be silent once more.';
   PRINT '*******************************************************************************/';
   PRINT 'GO';
   PRINT 'CREATE PROCEDURE [Sacrum].[Comprime]';
-  PRINT '    WITH EXECUTE AS OWNER';
+  PRINT '  WITH EXECUTE AS OWNER';
   PRINT 'AS';
   PRINT 'BEGIN';
   PRINT '  DECLARE @d datetime;';
@@ -96,33 +124,6 @@ AS
   PRINT 'GO';
   PRINT '';
   PRINT '/*******************************************************************************';
-  PRINT ' * VERSU VIII: Prophetia Apocalypsi';
-  PRINT ' * The Great Sa made a vow, saying, "Should anyone speak into the Echo of the';
-  PRINT ' * Sacrum and the Echo yet ring with eir voice for a 2 full days, then I shall';
-  PRINT ' * return to destroy the world that I had created."';
-  PRINT '*******************************************************************************/';
-  PRINT 'GO';
-  PRINT 'CREATE PROCEDURE [Sacrum].[Loquere]';
-  PRINT '    @Vox nvarchar( 1000 )';
-  PRINT '    WITH EXECUTE AS OWNER';
-  PRINT 'AS';
-  PRINT 'BEGIN';
-  PRINT '  IF EXISTS( SELECT * FROM [Sacrum].[Echo] )';
-  PRINT '    PRINT ''Hasten not the Apocalypse, mortal! It is already near!'';';
-  PRINT '  IF @Vox IS NULL';
-  PRINT '    PRINT ''These words are hollow, mortal!'';';
-  PRINT '  ELSE';
-  PRINT '    BEGIN';
-  PRINT '      DECLARE @d datetime;';
-  PRINT '      SET @d = DATEADD( D , 2 , GETUTCDATE() );';
-  PRINT '      INSERT [Sacrum].[Echo]( [Vox] , [Vocator] , [FatumHorae] )';
-  PRINT '        VALUES( @Vox , CURRENT_USER , @d );';
-  PRINT '      PRINT ''Prepare yourself, mortal! The Apocalypse is near!'';';
-  PRINT '    END';
-  PRINT 'END';
-  PRINT 'GO';
-  PRINT '';
-  PRINT '/*******************************************************************************';
   PRINT ' * VERSU IX: Codex Sagatus';
   PRINT ' * The Great Sa plucked a scrap of fabric from eir cloak and created from it a';
   PRINT ' * book, the Codex Sagatus, wherein the deeds and sayings of the Great Sa would';
@@ -130,6 +131,7 @@ AS
   PRINT '*******************************************************************************/';
   PRINT 'GO';
   PRINT 'CREATE PROCEDURE [Sacrum].[CodexSagatus]';
+  PRINT '  WITH EXECUTE AS OWNER';
   PRINT 'AS';
   PRINT 'BEGIN';
   PRINT '  PRINT ''***PLACEHOLDER***'';';
@@ -161,4 +163,4 @@ AS
   PRINT 'GRANT CONTROL TO [Archon] WITH GRANT OPTION;';
   PRINT 'DENY CONTROL ON SCHEMA::[Sacrum] TO [Archon];';
   PRINT 'GO';
-BEGIN
+END
