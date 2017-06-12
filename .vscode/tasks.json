@@ -1,0 +1,12 @@
+{
+  "version": "0.1.0",
+  "command": "python",
+  "showOutput": "always",
+  "suppressTaskName": true,
+  "tasks": [
+    {
+      "taskName": "Build Creation Scripts",
+      "args": ["tasks\\buildscripts.py"]
+    }
+  ]
+}

@@ -13,7 +13,7 @@ SET QUOTED_IDENTIFIER OFF;
  * proclaim,
 *******************************************************************************/
 
-DECLARE @clauses [Imperium].[ClauseTable]
+DECLARE @clauses [Imperium].[ClauseTable];
 INSERT @clauses
     ( [Name] , [English] , [Statement] )
   VALUES
@@ -27,11 +27,11 @@ system of action][1].
 "A ledger of [action points][1], which hereafter may be abreviated as **AP**,
 shall be kept and shall include:
 
-  1. the identity of the person which owns the action points
-  2. the number of action points that person currently possesses
-  3. the date and time the person that the indivual last earned gained an
-     action point, which hereafter may be referred to as the person's
-     recovery timer
+ 1. the identity of the person which owns the action points
+ 2. the number of action points that person currently possesses
+ 3. the date and time the person that the indivual last earned gained an
+    action point, which hereafter may be referred to as the person's
+    recovery timer
 
   [1]: OBJECT::[Action].[ActionPoints]" ,
 "CREATE TABLE [Action].[ActionPoints](
@@ -43,10 +43,10 @@ shall be kept and shall include:
 "A [log of actions][1] shall be kept, recording the certain activities of
 persons. Each line in the action log shall include:
 
-  1. a unique numerical identifier
-  2. the identity of the person that the line regards
-  3. the number of action points gained or lost by the person
-  4. the date and time the line was recorded in the action log
+ 1. a unique numerical identifier
+ 2. the identity of the person that said line regards
+ 3. the number of action points gained or lost by said person
+ 4. the date and time said line was recorded in the action log
 
   [1]: OBJECT::[Action].[ActionLog]" ,
 "CREATE TABLE [Action].[ActionLog](
@@ -58,43 +58,20 @@ persons. Each line in the action log shall include:
   [Process] int NOT NULL ,
   [Date] datetime NOT NULL );" ) ,
     ( "Definition of Maximum Action Points" ,
-"A ledger shall record the [maximum number of action points for a given 
-role][1].
+"The [maximum number of action points][1] shall be fifty (50).
 
-  [1]: OBJECT::[Action].[MaximumActionPointsByRole]" ,
-"CREATE TABLE [Action].[MaximumActionPointsByRole](
-  [RoleId] int NOT NULL
-               PRIMARY KEY ,
-  [Value] int NOT NULL );" ) ,
-    ( "Definition of Maximum Action Points" ,
-"The [maximum number of action points][1] a given person may have shall be the
-greater of
-
- *  the sum of the [maximum number of action points for][2] roles of which
-    said person is a member.
- *  zero (0).
-
-  [1]: OBJECT::[Action].[MaximumActionPoints]
-  [1]: OBJECT::[Action].[MaximumActionPointsByRole]" ,
+  [1]: OBJECT::[Action].[MaximumActionPoints]" ,
 "CREATE FUNCTION [Action].[MaximumActionPoints](
   @userId int )
 RETURNS int
 AS
 BEGIN
-  DECLARE @value;
-  SELECT @value = SUM( [Value] )
-    FROM [Action].[MaximumActionPointsByRole]
-    WHERE [ProcId] = @procId
-      AND ( IS_ROLEMEMBER( USER_NAME( [RoleId] ) ,USER_NAME( @userId ) ) = 1
-              OR [RoleId] IS NULL );
-  IF @value IS NULL OR @value < 0
-    SET @value = 0;
-  RETURN @value;
+  RETURN 50;
 END" ) ,
     ( "Recovery Rate" ,
 "The number of seconds required for any person to recover a single action
 point, which hereafter may be referred to as the [recovery rate][1], shall be
-sixty (60).
+thirty (30).
 
   [1]: OBJECT::[Action].[RecoveryRate]" ,
 "CREATE FUNCTION [Action].[RecoveryRate](
@@ -102,7 +79,7 @@ sixty (60).
 RETURNS int
 AS
 BEGIN
-  RETURN 60;
+  RETURN 30;
 END" ) ,
     ( "Definition of Action-Exemption" ,
 "There shall be a set of persons which shall not be limited by action point
@@ -167,6 +144,9 @@ following process:
 AS
 BEGIN
   SET NOCOUNT ON;
+  IF IS_ROLEMEMBER( 'ActionExempt', USER_NAME( @userId ) ) = 1
+    RETURN 0;
+
   DECLARE @timer datetime = GETUTCDATE() ,
           @prevTimer datetime ,
           @curAP int ,
@@ -174,28 +154,27 @@ BEGIN
           @newAP int ,
           @totalAP int ,
           @rate int ,
+          @newUser bit = 1 ,
           @procId int = OBJECT_ID( '[Action].[Recover]' );
   SET @points = 0;
 
-  IF IS_ROLEMEMBER( 'ActionExempt', USER_NAME(@userId) ) = 1
-    RETURN 0;
-  IF NOT EXISTS( SELECT *
-                   FROM [Action].[ActionPoints]
-                   WHERE [UserId] = @userId )
-    BEGIN
-      INSERT [Action].[ActionPoints]( [UserId] , [Value] , [Timer] )
-        VALUES( @userId , 0 , @timer );
-      RETURN 0;
-    END
-
   SELECT
+      @newUser = 0 ,
       @prevTimer = [Timer] ,
-      @curAP = [Value] ,
-      @maxAP = [Action].[MaximumActionPoints]( @userId ) ,
-      @rate = [Action].[RecoveryRate]( @userId )
+      @curAP = [Value]
     FROM [Action].[ActionPoints]
     WHERE [UserId] = @userId;
 
+  IF @newUser = 1
+    SELECT TOP(1)
+        @curAP = 0 ,
+        @prevTimer = [Date]
+      FROM [Imperium].[CitizenshipStatus]
+      WHERE [CitizenId] = @userId
+      ORDER BY [Id] DESC;
+
+  SET @maxAP = [Action].[MaximumActionPoints]( @userId );
+  SET @rate = [Action].[RecoveryRate]( @userId );
   SET @newAP = DATEDIFF( SECOND , @prevTimer , @timer ) / @rate;
   SET @totalAP = @newAP + @curAP;
   SET @points = IIF( @totalAP > @maxAP , @maxAP , @totalAP ) - @curAP;
@@ -203,6 +182,15 @@ BEGIN
 
   IF @points <= 0
     RETURN 0;
+
+  IF NOT EXISTS( SELECT *
+                   FROM [Action].[ActionPoints]
+                   WHERE [UserId] = @userId )
+    BEGIN
+      INSERT [Action].[ActionPoints]( [UserId] , [Value] , [Timer] )
+        VALUES( @userId , @points , @timer );
+      RETURN 0;
+    END
 
   UPDATE [Action].[ActionPoints]
     SET
@@ -251,30 +239,26 @@ BEGIN
 END" ) ,
     ( "Definition of a Action Point Requirements" ,
 "An [action point requirement][1], for a procedure is a number of action
-points assocated with that procedure, optionally associated with a role.
+points assocated with that procedure.
 
   [1]: OBJECT::[Action].[ActionPointRequirements]" ,
 "CREATE TABLE [Action].[ActionPointRequirements](
   [ProcId] int NOT NULL
-           PRIMARY KEY ,
-  [Points] int NOT NULL ,
-  [RoleId] int NULL );" ) ,
+               PRIMARY KEY ,
+  [Points] int NOT NULL );" ) ,
     ( "Requiring Action Points" ,
-"To [require][1] a given non-negative number of [action points][2], from a
-given person, to perform a given procedure, is to perform the following
-procedure:
+"To [evaluate the action point requirement][1] for a given procedure, for a
+given person, with optional number of action points, is to perform the
+following procedure:
 
  1. if said number of action points is negative, raise an error and stop
  2. if said procedure identifier does not identify a valid procedure, raise
     an error and stop
- 3. if the person for whom the requirement is being evaluated is
-    [action-exempt][3], stop
- 4. if said number of action points is not specified, the number of action
-    points shall be the sum of the [action point requirements][4] that are:
-    *  for said procedure and not associated with a role
-    *  for said procedure and associated with a role of which said person is a
-       member
- 5. recover action for the person
+ 3. if said person is [action-exempt][2], stop
+ 4. if a number of action points is not specified, the number of action
+    points shall be the value of the [action point requirement][3] for said
+    procedure
+ 5. [recover][4] action points for the person
  6. if the number of action points the person currently has is less than
     specified number of action points, raise an error and stop
  7. if the specified number of action points is greater than zero
@@ -292,9 +276,9 @@ procedure:
     time.
 
   [1]: OBJECT::[Action].[Require]
-  [2]: OBJECT::[Action].[ActionPoints]
-  [3]: ROLE::[ActionExempt]
-  [4]: OBJECT::[Action].[ActionPointRequirements]
+  [2]: ROLE::[ActionExempt]
+  [3]: OBJECT::[Action].[ActionPointRequirements]
+  [4]: OBJECT::[Action].[Recover]
   [5]: OBJECT::[Action].[ActionLog]" ,
 "CREATE PROCEDURE [Action].[Require]
     @procId int ,
@@ -312,28 +296,21 @@ BEGIN
                    FROM [sys].[procedures]
                    WHERE [object_id] = @procId )
     BEGIN
-      SET @err =
-        'No procedure with ID '
-        + CAST( @procId AS nvarchar( 30 ) )
-        + ' exists.';
+      SET @err = CONCAT( 'No procedure with ID ' , @procId , ' exists.' );
       THROW 50000 , @err , 1;
     END
 
   IF @points IS NULL
-    SELECT @points = SUM( [Points] )
+    SELECT @points = [Points]
       FROM [Action].[ActionPointRequirements]
-      WHERE [ProcId] = @procId
-        AND ( [RoleId] IS NULL
-              OR IS_ROLEMEMBER(
-                   USER_NAME( [RoleId] ) ,
-                   USER_NAME( @userId ) ) = 1 );
+      WHERE [ProcId] = @procId;
   SET @points = ISNULL( @points , 0 );
   SET @userId = ISNULL( @userId , USER_ID() );
   DECLARE @value int ,
           @maxAP int ,
           @return int = -1;
 
-  IF USER_NAME(@userId) IS NULL
+  IF USER_NAME( @userId ) IS NULL
     THROW 50000 , N'Specified user does not exist.' , 1;
   ELSE IF IS_ROLEMEMBER( 'ActionExempt', USER_NAME( @userId ) ) = 1
     RETURN 0;
@@ -348,10 +325,7 @@ BEGIN
 
   IF ISNULL( @value , 0 ) < @points
     BEGIN
-      SET @err =
-        'This action requres at least '
-        + CAST( @points AS nvarchar(30) )
-        + ' AP. Use [Recover] to gain AP.';
+      SET @err = CONCAT( 'This action requres at least ' ,  @points , ' AP.' );
       THROW 50000 , @err , 1;
     END
   ELSE IF @points > 0
@@ -365,7 +339,7 @@ BEGIN
             [Timer] )
       WHERE [UserId] = @userId;
 
-  INSERT [Action].[ActionLog] ( [UserId] , [Change] , [Process] , [Date] )
+  INSERT [Action].[ActionLog]( [UserId] , [Change] , [Process] , [Date] )
     VALUES( @userId , -@points , @procId , GETUTCDATE() );
 
   SET @logId = SCOPE_IDENTITY();
@@ -411,24 +385,13 @@ SELECT
   [1]: ROLE::[Citizen]
   [2]: OBJECT::[Action].[Recover]" ,
 "GRANT EXECUTE ON OBJECT::[Action].[Recover] TO [Citizen];" ) ,
-    ( "Maximum Action Points for Citizens" ,
-"[Citizens][1] shall have a maximum action point value of twenty (20).
-
-  [1]: ROLE::[Citizen]
-  [2]: OBJECT::[Action].[MaximumActionPointsByRole]" ,
-"INSERT [Action].[MaximumActionPointsByRole]( [RoleId] , [Value] )
-  VALUES( USER_ID( 'Citizen' ) , 20 );" ) ,
     ( "Access to Information Regarding Action Points" ,
-"All [citizens][1] may view the [maximum the action points for any role][2]
-and view the [action point requirement][3] of any procedure.
+"All [citizens][1] may view the [action point requirement][2] of any
+procedure.
 
   [1]: ROLE::[Citizen]
-  [2]: OBJECT::[Action].[MaximumActionPointsByRole]
-  [3]: OBJECT::[Action].[ActionPointRequirements]" ,
+  [2]: OBJECT::[Action].[ActionPointRequirements]" ,
 "GRANT SELECT , REFERENCES
-  ON OBJECT::[Action].[MaximumActionPointsByRole]
-  TO [Citizen];
-GRANT SELECT , REFERENCES
   ON OBJECT::[Action].[ActionPointRequirements]
   TO [Citizen];" );
 
